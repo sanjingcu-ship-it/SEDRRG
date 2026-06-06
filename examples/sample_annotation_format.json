@@ -1,0 +1,13 @@
+{
+  "train": [
+    {
+      "id": "sample_study_id",
+      "image_path": ["relative/path/to/image.jpg"],
+      "report": "example report text",
+      "ce_labels": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "ce_positive_names": ["No Finding"]
+    }
+  ],
+  "val": [],
+  "test": []
+}

@@ -1,0 +1,25 @@
+name: sedrrg
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  # ---- PyTorch (GPU) ----
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=11.8
+  # ---- common ----
+  - numpy
+  - pandas
+  - scikit-learn
+  - tqdm
+  - pillow
+  - opencv
+  - nltk
+  - pip:
+      - timm
+      - pycocotools
+      - pycocoevalcap

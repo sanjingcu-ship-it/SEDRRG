@@ -1,0 +1,29 @@
+# IU X-Ray report generation configuration.
+# Replace paths with local dataset paths.
+
+image_dir: /path/to/iu_xray/images
+ann_path: /path/to/iu_xray_annotation.json
+dataset_name: iu_xray
+
+max_seq_length: 60
+threshold: 3
+batch_size: 16
+num_workers: 4
+
+visual_extractor: swim_transformer_v2
+visual_extractor_pretrained: true
+feature_dim: 768
+
+d_model: 512
+d_ff: 512
+d_vf: 768
+num_heads: 8
+num_layers: 3
+dropout: 0.1
+
+num_diffusion_steps: 9
+sample_max_len: 60
+beam_size: 2
+
+epochs: 15
+seed: 9223

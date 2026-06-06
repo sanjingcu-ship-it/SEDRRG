@@ -1,0 +1,33 @@
+# MIMIC-CXR clinical evidence training configuration.
+# Paths should be replaced by local dataset paths.
+
+image_dir: /path/to/mimic-cxr-jpg
+ann_path: /path/to/mimic_cxr_annotation_with_ce_labels.json
+output_dir: outputs/mimic_cxr_clinical_evidence
+
+dataset_name: mimic_cxr
+max_seq_length: 100
+vocab_threshold: 10
+batch_size: 16
+num_workers: 4
+
+visual_extractor: swim_transformer_v2
+visual_extractor_pretrained: true
+feature_dim: 768
+
+d_model: 512
+d_ff: 512
+d_vf: 768
+num_heads: 8
+num_layers: 3
+dropout: 0.0
+num_diffusion_steps: 9
+sample_max_len: 60
+
+head_epochs: 3
+finetune_epochs: 10
+head_lr: 0.001
+finetune_head_lr: 0.0003
+finetune_visual_lr: 0.00001
+weight_decay: 0.0001
+seed: 2026

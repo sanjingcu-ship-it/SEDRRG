@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.ipynb_checkpoints/
+
+# Environments
+.env
+.venv/
+venv/
+conda-meta/
+
+# Data and outputs
+data/
+ann/
+annotations/
+datasets/
+outputs/
+results/
+records/
+runs/
+logs/
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+*.pkl
+*.npy
+*.npz
+
+# Local paths and temporary files
+*.bak*
+*.tmp
+*.log
+.DS_Store
+
+# Experiment-only scripts
+debug_*.py
+*debug*
+*tiny*
+*overnight*
+*phase1*
+*prediction*
