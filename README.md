@@ -26,6 +26,7 @@ SEDRRG/
 │   ├── evaluate_report_generation.py
 │   ├── train_clinical_evidence.py
 │   ├── evaluate_clinical_efficacy.py
+│   ├── evaluate_report_clinical_efficacy.py
 │   └── export_structured_evidence.py
 ├── models/
 ├── modules/
@@ -101,6 +102,10 @@ python scripts/export_structured_evidence.py \
   --visual_extractor_pretrained
 ```
 
+
+## Medical word/phrase boost ablation
+
+The default report-generation evaluation uses `--sample_ngram_boost 1.5`. To disable the medical word/phrase boost for the inference-only ablation, use `--sample_ngram_boost 1.0` while keeping the checkpoint, tokenizer, split, and other sampling settings unchanged.
 
 ## Report-level clinical efficacy evaluation
 

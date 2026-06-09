@@ -302,6 +302,31 @@ class R2GenModel(nn.Module):
             if eos_id is not None and 0 <= eos_id < logits.size(-1) and min_len > 0:
                 logits[:, :min(min_len, max_len), eos_id] = -float("inf")
 
+            # Optional medical phrase / n-gram boost during inference.
+            # A factor of 1.0 disables the boost. A factor larger than 1.0
+            # increases phrase-token logits by log(boost_factor), which is
+            # equivalent to multiplying their probabilities by boost_factor.
+            if ngram_boost is None:
+                ngram_boost = float(getattr(self.args, "sample_ngram_boost", 1.0))
+            boost_factor = float(ngram_boost)
+
+            if boost_factor > 0.0 and abs(boost_factor - 1.0) > 1e-12:
+                phrase_ids = [
+                    int(idx)
+                    for idx, tok in getattr(self.tokenizer, "idx2token", {}).items()
+                    if isinstance(tok, str) and len(tok.split()) >= 2
+                ]
+                if len(phrase_ids) > 0:
+                    phrase_ids = torch.as_tensor(phrase_ids, device=device, dtype=torch.long)
+                    phrase_ids = phrase_ids[
+                        (phrase_ids >= 0) & (phrase_ids < logits.size(-1))
+                    ]
+                    if phrase_ids.numel() > 0:
+                        log_boost = torch.log(
+                            torch.tensor(boost_factor, device=device, dtype=logits.dtype)
+                        )
+                        logits[:, :, phrase_ids] = logits[:, :, phrase_ids] + log_boost
+
             pred = logits.argmax(dim=-1)
             return pred.cpu().numpy()
 
