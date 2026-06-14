@@ -1,0 +1,20 @@
+python main_test.py \
+--image_dir data/iu_xray/images/ \
+--ann_path data/iu_xray/annotation.json \
+--dataset_name iu_xray \
+--max_seq_length 60 \
+--threshold 3 \
+--num_workers 2 \
+--batch_size 16 \
+--save_dir results/iu_xray_sedrrg_seed9233_test \
+--step_size 50 \
+--gamma 0.1 \
+--seed 9233 \
+--num_diffusion_steps 9 \
+--sample_diffusion_steps 9 \
+--sample_max_len 12 \
+--sample_alpha 1.2 \
+--sample_temperature 0.6 \
+--sample_top_k 4 \
+--sample_ngram_boost 1.5 \
+--load results/iu_xray_sedrrg_seed9233/model_best.pth

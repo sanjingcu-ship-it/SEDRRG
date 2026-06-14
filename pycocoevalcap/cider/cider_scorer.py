@@ -192,6 +192,6 @@ class CiderScorer(object):
         assert(len(self.ctest) >= max(self.document_frequency.values()))
         # compute cider score
         score = self.compute_cider()
-        # Diagnostic scoring cache.
+        # debug
         # print score
         return np.mean(np.array(score)), np.array(score)

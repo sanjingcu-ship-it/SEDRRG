@@ -448,7 +448,7 @@ class DiscreteDiffusion(nn.Module):
         self.register_buffer('sqrt_alphas', self._create_noise_schedule('cosine'))
         self.register_buffer('sqrt_one_minus_alphas', torch.sqrt(1 - self.sqrt_alphas ** 2))
 
-        self.pos_embed = nn.Parameter(torch.randn(1, 60, args.d_model))
+        self.pos_embed = nn.Parameter(torch.randn(1, int(getattr(args, 'max_seq_length', 100)), args.d_model))
         # 在DiscreteDiffusion的__init__中
 
 
@@ -472,38 +472,31 @@ class DiscreteDiffusion(nn.Module):
         return self.transition_norm(self.transition_logits)
 
     def forward(self, x_0, att_feats, fc_feats, t):
-        """改进的扩散过程 - 融入视觉条件"""
+        """Discrete mask corruption used for training-time denoising.
+
+        Sampling starts from all <mask> tokens. Therefore training should expose
+        the denoiser to masked inputs rather than arbitrary transition-matrix
+        token substitutions. Higher t means a higher mask ratio.
+        """
         batch_size, seq_len = x_0.shape
+        device = x_0.device
 
-        # 1. 获取视觉条件（与denoise_step一致）
-        _, cond = self.visual_bridge(att_feats, fc_feats, return_attn=False)  # [batch, d_model]
+        # t in [0, T-1] -> mask_prob in (0, 1].
+        mask_prob = (t.float() + 1.0) / float(self.num_timesteps)
+        mask_prob = mask_prob.view(-1, 1).clamp(0.0, 1.0)
 
-        # 2. 条件相关的噪声采样
-        with torch.no_grad():
-            # 将条件信息融入转移概率
-            token_embedding_weight = self.token_embed[0].weight  # 从Sequential中取出Embedding层
-            cond_weights = torch.sigmoid(cond @ token_embedding_weight.t())
+        pad_id = int(getattr(self.tokenizer, "pad_token_id", 0))
+        mask_id = int(getattr(self.tokenizer, "mask_token_id"))
 
-            transition_probs = self.transition_matrix[x_0.flatten()]  # [batch*seq_len, vocab_size]
+        valid = x_0.ne(pad_id)
+        corrupt = (torch.rand(batch_size, seq_len, device=device) < mask_prob) & valid
 
-            # 调整转移概率（偏向与视觉条件相关的token）
-            adjusted_probs = transition_probs * cond_weights.repeat(1, seq_len).view(-1, self.vocab_size)
-            adjusted_probs = adjusted_probs / adjusted_probs.sum(-1, keepdim=True)
-
-            noise = torch.multinomial(adjusted_probs, num_samples=1).view(batch_size, seq_len)
-
-        # 3. 基于调度表的噪声混合
-        sqrt_alpha = self.sqrt_alphas[t].view(-1, 1)
-        sqrt_one_minus_alpha = self.sqrt_one_minus_alphas[t].view(-1, 1)
-
-        # 视觉条件感知的噪声混合
-        cond_strength = torch.sigmoid(cond.mean(-1, keepdim=True))  # [batch, 1]
-        noise_ratio = sqrt_one_minus_alpha * (0.8 + 0.2 * cond_strength)  # 条件越强，保留更多原始信息
-
-        mask = (torch.rand_like(x_0.float()) < noise_ratio)
-        x_t = torch.where(mask, noise, x_0)
-
-        return x_t
+        x_t = torch.where(
+            corrupt,
+            torch.full_like(x_0, mask_id),
+            x_0
+        )
+        return x_t, corrupt
 
     def denoise_step(self, x_t, att_feats, fc_feats, t, memory=None, return_attn=False):
 
@@ -570,7 +563,7 @@ class DiscreteDiffusion(nn.Module):
         # 添加残差连接和dropout
         final_rep = trans_out + self.dropout(trans_out_norm)
 
-        # Output predictions.
+        # 7f. 输出预测
         logits = self.head(final_rep)
 
         # 添加logits检查
@@ -663,5 +656,5 @@ class TransformerDenoiser(nn.Module):
         # Transformer 处理
         x_out = self.transformer(x_emb)
 
-        # Predict logits.
+        # 预测 logits
         return self.head(x_out)

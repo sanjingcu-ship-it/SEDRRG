@@ -208,6 +208,34 @@ class AttModel(CaptionModel):
             # sample the next word
             if t == self.max_seq_length:  # skip if we achieve maximum length
                 break
+
+            # [SEDRRG-AR-STRONG-DECODE-GUARD-20260603]
+            # Inference-only guards against free-running repetition collapse.
+            # 1) Never generate pad/bos/unk/mask as text.
+            for bad_id in getattr(self, "bad_token_ids", []):
+                if bad_id is not None and 0 <= int(bad_id) < logprobs.size(1):
+                    logprobs[:, int(bad_id)] = -1e9
+
+            # 2) Avoid ending too early.
+            min_len = int(getattr(self, "min_decode_len", 8))
+            if t < min_len and hasattr(self, "eos_idx"):
+                if 0 <= int(self.eos_idx) < logprobs.size(1):
+                    logprobs[:, int(self.eos_idx)] = -1e9
+
+            # 3) Ban immediate token repetition.
+            if t > 0:
+                logprobs.scatter_(1, seq[:, t - 1].unsqueeze(1), -1e9)
+
+            # 4) Hard no-repeat bigram.
+            if t >= 1:
+                for b in range(seq.size(0)):
+                    prev = int(seq[b, t - 1].item())
+                    for j in range(t - 1):
+                        if int(seq[b, j].item()) == prev:
+                            nxt = int(seq[b, j + 1].item())
+                            if 0 <= nxt < logprobs.size(1):
+                                logprobs[b, nxt] = -1e9
+
             it, sampleLogprobs = self.sample_next_word(logprobs, sample_method, temperature)
 
             # stop when all finished

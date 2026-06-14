@@ -166,6 +166,33 @@ class ConditionalLayerNorm(nn.Module):
     def forward(self, x, memory):
         mean = x.mean(-1, keepdim=True)
         std = x.std(-1, keepdim=True)
+        # [SEDRRG-AR-CONDLN-MEMORY-ADAPTER-20260603]
+        # Some legacy AR paths call ConditionalLayerNorm without the original
+        # relational-memory vector. In that case memory may be the decoder state
+        # itself with last_dim=d_model (e.g., 512), while mlp_gamma/mlp_beta were
+        # built for rm_num_slots * rm_d_model (e.g., 3*512=1536).
+        # Adapt dimensions conservatively so the AR fallback route can run.
+        if memory is None:
+            memory = x
+
+        if memory.dim() == 2:
+            memory = memory.unsqueeze(1).expand(-1, x.size(1), -1)
+        elif memory.dim() == 3 and memory.size(1) != x.size(1):
+            memory = memory.mean(dim=1, keepdim=True).expand(-1, x.size(1), -1)
+
+        expected_dim = self.mlp_gamma[0].in_features
+        cur_dim = memory.size(-1)
+
+        if cur_dim != expected_dim:
+            if cur_dim < expected_dim:
+                if expected_dim % cur_dim == 0:
+                    memory = memory.repeat(1, 1, expected_dim // cur_dim)
+                else:
+                    pad = memory.new_zeros(*memory.shape[:-1], expected_dim - cur_dim)
+                    memory = torch.cat([memory, pad], dim=-1)
+            else:
+                memory = memory[..., :expected_dim]
+
         delta_gamma = self.mlp_gamma(memory)
         delta_beta = self.mlp_beta(memory)
         gamma_hat = self.gamma.clone()

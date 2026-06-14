@@ -1,0 +1,22 @@
+python main_train_repro_final.py \
+--image_dir data/iu_xray/images/ \
+--ann_path data/iu_xray/annotation.json \
+--dataset_name iu_xray \
+--max_seq_length 60 \
+--threshold 3 \
+--num_workers 2 \
+--batch_size 16 \
+--epochs 40 \
+--save_dir results/iu_xray_sedrrg_seed9233 \
+--record_dir records/iu_xray_sedrrg_seed9233 \
+--step_size 50 \
+--gamma 0.1 \
+--seed 9233 \
+--lr_ed 2e-5 \
+--num_diffusion_steps 9 \
+--sample_diffusion_steps 9 \
+--sample_max_len 12 \
+--sample_alpha 1.2 \
+--sample_temperature 0.6 \
+--sample_top_k 4 \
+--sample_ngram_boost 1.5

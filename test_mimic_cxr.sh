@@ -1,0 +1,19 @@
+python main_test.py \
+--image_dir data/mimic_cxr/images/ \
+--ann_path data/mimic_cxr/annotation.json \
+--dataset_name mimic_cxr \
+--max_seq_length 100 \
+--threshold 10 \
+--num_workers 2 \
+--batch_size 16 \
+--save_dir results/mimic_cxr_sedrrg_test \
+--step_size 1 \
+--gamma 0.8 \
+--seed 456789 \
+--num_diffusion_steps 9 \
+--sample_diffusion_steps 9 \
+--sample_max_len 100 \
+--sample_temperature 0.8 \
+--sample_top_k 4 \
+--sample_ngram_boost 0.0 \
+--load results/mimic_cxr_sedrrg/model_best.pth

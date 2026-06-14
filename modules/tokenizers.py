@@ -164,14 +164,29 @@ class Tokenizer(object):
             tokens = word_tokenize(self.clean_report(example['report']).lower())
             for n in range(1, 5):
                 ngram_counter.update([' '.join(gram) for gram in ngrams(tokens, n)])
-        # Threshold policy:
-        # - MIMIC-CXR uses word-level vocabulary controlled by args.threshold.
-        #   This keeps the official MIMIC setting reproducible, while allowing
-        # - IU X-Ray keeps the original n-gram thresholds used by the reproduced code.
+        # # [MIMIC-WORDLEVEL-VOCAB-20260603]
         if getattr(self, 'dataset_name', '') == 'mimic_cxr':
+            # For MIMIC-CXR, use word-level vocabulary only. Phrase tokens caused
+            # high-frequency template repetition during diffusion sampling.
             thresholds = {1: self.threshold, 2: 10**12, 3: 10**12, 4: 10**12}
         else:
             thresholds = {1: 4, 2: 1000, 3: 150, 4: 30}
+        # thresholds = {1: 10, 2: 1000, 3: 150, 4: 50}
+
+        # thresholds = {1: 30, 2: 1000, 3: 150, 4: 50}       0.354,0.076
+        # thresholds = {1: 504, 2: 1000, 3: 150, 4: 70}  0.31,0.072
+
+        # thresholds = {1: 11, 2: 1000, 3: 150, 4: 70}       0.359,0.082   22
+        # thresholds = {1: 11, 2: 2000, 3: 150, 4: 70}      0.337,0.084
+        # thresholds = {1: 4, 2: 1000, 3: 150, 4: 30}   # disabled; do not override dataset-specific thresholds
+        # thresholds = {1: 6, 2: 1000, 3: 200, 4: 100}     0.365,0.082
+        # thresholds = {1: 4, 2: 1000, 3: 200, 4: 200}   #0.312,0.084
+        # thresholds = {1: 4, 2: 2000, 3: 100, 4: 200}   0.358,0.078
+        # thresholds = {1: 4, 2: 1500, 3: 1000, 4: 200}   0.337,0.052
+        # thresholds = {1: 4, 2: 1500, 3: 1000, 4: 400}   0.311
+        # thresholds = {1: 3, 2: 2500, 3: 1000, 4: 400}   0.335,0.070
+        # thresholds = {1: 3, 2: 1900, 3: 1000, 4: 500}   0.351,0.062
+        # thresholds = {1: 4, 2: 2500, 3: 1500, 4: 300}   0.311,0.045
         exclude_punct = {'.', ',', ';', ':', '?', '!'}
 
         vocab = {
@@ -180,6 +195,14 @@ class Tokenizer(object):
                and (len(words) == 1 or not any(w in exclude_punct for w in words))
                and freq > thresholds[len(words)]
         }
+
+        # [MIMIC-HARD-FILTER-PHRASE-TOKENS-20260603]
+        if getattr(self, 'dataset_name', '') == 'mimic_cxr':
+            # Hard filter phrase tokens for MIMIC-CXR.
+            # The original n-gram vocabulary creates phrase tokens such as
+            # 'no acute cardiopulmonary process', which caused template repetition
+            # and unstable diffusion sampling on MIMIC.
+            vocab = {tok for tok in vocab if ' ' not in str(tok)}
 
         vocab.add('<unk>')
         vocab = sorted(vocab)
@@ -206,9 +229,10 @@ class Tokenizer(object):
         return self.token2idx[token]
 
     def get_vocab_size(self):
-        # Return the maximum valid token id, not len(token2idx).
-        # R2GenModel internally uses args.vocab_size + 1 as the class count.
-        return max(self.idx2token.keys())
+        # Return embedding/output size, not the number of stored tokens.
+        # Token ids are not guaranteed to be contiguous from 0 because pad=0
+        # is reserved and idx2token starts from 1. Therefore the safe size is max_id + 1.
+        return max(self.idx2token.keys()) + 1
 
     def __call__(self, report):
         text = self.clean_report(report).lower()
@@ -240,7 +264,7 @@ class Tokenizer(object):
         for idx in ids:
             idx = int(idx)
 
-            # Stop at the true sequence boundary.
+            # Stop at true sequence boundary.
             if idx == self.eos_token_id or idx == self.pad_token_id:
                 break
 
@@ -252,6 +276,8 @@ class Tokenizer(object):
                 continue
 
             token = self.idx2token.get(idx, self.unk_token)
+
+            # Do not surface unknown/special tokens in decoded reports.
             if token in ["<cls>", "<eos>", "<pad>", "<mask>", "<unk>"]:
                 continue
 

@@ -193,6 +193,14 @@ class Trainer(BaseTrainer):
                 images=images
             )
 
+            # Optional MFSL diagnostics. Enable with SEDRRG_DEBUG_MFSL=1.
+            if (
+                os.environ.get("SEDRRG_DEBUG_MFSL", "0") == "1"
+                and batch_idx < 3
+                and hasattr(self.criterion, "last_components")
+            ):
+                print("[MFSL components]", self.criterion.last_components)
+
             train_loss += loss.item()
             self.optimizer.zero_grad()
             # 反向传播

@@ -350,7 +350,7 @@ class ImprovedAntiEmbeddings(nn.Module):
         # 温度缩放
         x = x / self.temperature
 
-        # Predict tokens.
+        # 预测单词
         pred = torch.max(x, dim=-1)[1]  # (batch_size, max_sent, max_word)
 
         return x, pred

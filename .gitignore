@@ -2,7 +2,9 @@
 __pycache__/
 *.py[cod]
 *.so
-.ipynb_checkpoints/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
 
 # Environments
 .env
@@ -10,34 +12,46 @@ __pycache__/
 venv/
 conda-meta/
 
-# Data and outputs
-data/
-ann/
-annotations/
-datasets/
-outputs/
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Data and generated files
+data/*
+!data/.gitkeep
 results/
 records/
-runs/
 logs/
-checkpoints/
+runs/
+wandb/
+tmp/
+temp/
+
+# Medical images / arrays / tables
+*.dcm
+*.jpg
+*.jpeg
+*.png
+*.npy
+*.npz
+*.pkl
+*.h5
+*.hdf5
+*.csv
+*.jsonl
+
+# Checkpoints / weights
 *.pth
 *.pt
 *.ckpt
-*.pkl
-*.npy
-*.npz
+*.bin
 
-# Local paths and temporary files
-*.bak*
-*.tmp
+# Logs
 *.log
-.DS_Store
+*.out
+*.err
 
-# Experiment-only scripts
-debug_*.py
-*debug*
-*tiny*
-*overnight*
-*phase1*
-*prediction*
+# Backups
+*.bak*
+*.backup*

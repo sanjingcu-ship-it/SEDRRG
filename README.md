@@ -1,121 +1,92 @@
 # SEDRRG
 
-Official implementation of **SEDRRG: Structured Evidence-guided Discrete Diffusion for Radiology Report Generation**.
+Structured Evidence-Guided Discrete Diffusion for Image-Conditioned Radiology Report Generation.
 
-## Overview
+This repository contains the code used for the SEDRRG radiology report generation experiments. The active model is a discrete report-token diffusion model for image-conditioned radiology report generation.
 
-SEDRRG is a radiology report generation framework that combines visual encoding, structured clinical evidence, and discrete diffusion-based text generation.
+## Main components
 
-This repository provides:
+- Discrete report-token diffusion for chest X-ray report generation.
+- Code-aligned MFSL training objective.
+- Medical token/phrase consistency, report-structure token consistency, and lightweight image-memory alignment.
+- CheXbert-label-based clinical efficacy evaluation after generation.
+- Optional token-space denoising trace export.
 
-- report generation training and evaluation;
-- MIMIC-CXR clinical efficacy evaluation with 14 labels;
-- structured clinical evidence extraction;
-- reproducible configuration templates for IU X-Ray and MIMIC-CXR.
+CheXbert is not used as a training loss. It is used only after report generation to extract clinical observation labels from generated and reference reports for clinical efficacy evaluation.
 
-## Repository structure
+## Environment
 
-```text
-SEDRRG/
-├── configs/
-│   ├── iu_xray.yaml
-│   ├── mimic_cxr.yaml
-│   └── mimic_cxr_clinical_evidence.yaml
-├── scripts/
-│   ├── train_report_generation.py
-│   ├── evaluate_report_generation.py
-│   ├── train_clinical_evidence.py
-│   ├── evaluate_clinical_efficacy.py
-│   ├── evaluate_report_clinical_efficacy.py
-│   └── export_structured_evidence.py
-├── models/
-├── modules/
-├── pycocoevalcap/
-├── examples/
-└── docs/
-```
+Create the environment with:
+
+    conda env create -f environment.yml
+    conda activate sedrrg
+
+If your local CUDA or PyTorch version differs, install a compatible PyTorch build for your GPU first and then install the remaining dependencies.
 
 ## Data
 
-This repository does not include IU X-Ray or MIMIC-CXR images or reports. Please obtain the datasets from their official sources and prepare annotations following `examples/sample_annotation_format.json`.
+The IU X-Ray and MIMIC-CXR datasets are not redistributed in this repository. Please obtain them from their original data providers and follow their data-use agreements.
 
-See `docs/data_preparation.md` for details.
+Expected local layout:
 
-## Training report generation
+    data/
+      iu_xray/
+        images/
+        annotation.json
+      mimic_cxr/
+        images/
+        annotation.json
 
-```bash
-python scripts/train_report_generation.py \
-  --image_dir /path/to/images \
-  --ann_path /path/to/annotation.json \
-  --dataset_name mimic_cxr \
-  --max_seq_length 100 \
-  --threshold 10 \
-  --batch_size 16 \
-  --num_diffusion_steps 9 \
-  --sample_max_len 60
-```
+The annotation JSON files should follow the standard train, validation, and test split format used by the dataloader.
 
-## Evaluating report generation
+## Training
 
-```bash
-python scripts/evaluate_report_generation.py \
-  --image_dir /path/to/images \
-  --ann_path /path/to/annotation.json \
-  --dataset_name mimic_cxr \
-  --max_seq_length 100 \
-  --threshold 10 \
-  --sample_max_len 60 \
-  --resume /path/to/checkpoint.pth
-```
+Train on IU X-Ray:
 
-## Training the clinical evidence branch
+    bash train_iu_xray.sh
 
-```bash
-python scripts/train_clinical_evidence.py \
-  --image_dir /path/to/mimic-cxr-jpg \
-  --ann_path /path/to/mimic_annotation_with_ce_labels.json \
-  --output_dir outputs/mimic_cxr_clinical_evidence \
-  --dataset_name mimic_cxr \
-  --visual_extractor_pretrained
-```
+Train on MIMIC-CXR:
+
+    bash train_mimic_cxr.sh
+
+The scripts are runnable examples. Adjust paths, batch size, and worker number according to your local hardware and dataset location.
+
+## Testing
+
+Test on IU X-Ray:
+
+    bash test_iu_xray.sh
+
+Test on MIMIC-CXR:
+
+    bash test_mimic_cxr.sh
+
+## Denoising trace export
+
+To export token-space reverse diffusion traces, add these flags to main_test.py:
+
+    --export_denoising_trace
+    --trace_output results/iu_xray_trace/denoising_trace.jsonl
+
+The exported trace records report-token states and sampling statistics in token space. It should not be interpreted as image or pixel denoising.
 
 ## Clinical efficacy evaluation
 
-```bash
-python scripts/evaluate_clinical_efficacy.py \
-  --image_dir /path/to/mimic-cxr-jpg \
-  --ann_path /path/to/mimic_annotation_with_ce_labels.json \
-  --checkpoint outputs/mimic_cxr_clinical_evidence/clinical_evidence_best.pth \
-  --output_path outputs/mimic_cxr_clinical_evidence/test_metrics.json \
-  --split test \
-  --visual_extractor_pretrained
-```
+Clinical efficacy is evaluated after report generation. First apply CheXbert or a compatible label extractor to generated and reference reports to obtain 14-observation label tables. Then run:
 
-## Exporting structured evidence
+    python compute_ce.py
 
-```bash
-python scripts/export_structured_evidence.py \
-  --image_dir /path/to/mimic-cxr-jpg \
-  --ann_path /path/to/mimic_annotation_with_ce_labels.json \
-  --checkpoint outputs/mimic_cxr_clinical_evidence/clinical_evidence_best.pth \
-  --output_path outputs/mimic_cxr_clinical_evidence/structured_evidence.json \
-  --visual_extractor_pretrained
-```
+By default, compute_ce.py expects:
 
+    results/mimic_cxr/res_labeled.csv
+    results/mimic_cxr/gts_labeled.csv
 
-## Medical word/phrase boost ablation
+The script maps uncertain labels to non-positive labels and computes multi-label clinical efficacy metrics using the extracted label vectors.
 
-The default report-generation evaluation uses `--sample_ngram_boost 1.5`. To disable the medical word/phrase boost for the inference-only ablation, use `--sample_ngram_boost 1.0` while keeping the checkpoint, tokenizer, split, and other sampling settings unchanged.
+## Notes
 
-## Report-level clinical efficacy evaluation
-
-```bash
-python scripts/evaluate_report_clinical_efficacy.py \
-  --pred_path /path/to/generated_reports.json \
-  --ref_path /path/to/reference_reports_or_labels.json \
-  --output_path outputs/report_clinical_efficacy.json
-```
-
-## License
-
-Please check the license before using this code.
+- The active class is R2GenModel.
+- R2GenModel1 is retained only for legacy compatibility.
+- The active training entry point is main_train_repro_final.py.
+- main_train.py is retained for backward compatibility with earlier R2Gen-style experiments.
+- Model checkpoints, datasets, logs, and generated result files are intentionally excluded from the repository.
