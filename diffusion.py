@@ -353,6 +353,20 @@ class DiscreteDiffusion(nn.Module):
         )
         self.token_visual_norm = nn.LayerNorm(args.d_model)
         self.token_visual_drop = nn.Dropout(args.dropout)
+
+        # Paper-aligned denoising-time token-wise global-local gate.
+        # C_g = broadcast(W_g f_g), C_p = Attn(Z W_Q, F_p W_K, F_p W_V),
+        # G_t = sigmoid(W_gamma [Z; C_g; C_p; E_t] + b_gamma),
+        # C_t = G_t * C_g + (1 - G_t) * C_p, followed by W_C and residual LN.
+        self.global_cond_proj = nn.Linear(args.d_model, args.d_model)
+        self.global_local_gate = nn.Sequential(
+            nn.Linear(args.d_model * 4, args.d_model),
+            nn.GELU(),
+            nn.Linear(args.d_model, args.d_model),
+            nn.Sigmoid()
+        )
+        self.condition_proj = nn.Linear(args.d_model, args.d_model)
+        self.condition_norm = nn.LayerNorm(args.d_model)
         self.time_mlp = nn.Sequential(
             nn.Linear(args.d_model, args.d_model * 4),
             nn.GELU(),
@@ -471,19 +485,45 @@ class DiscreteDiffusion(nn.Module):
 
         x_emb = self.token_embed(x_t)  # [B, seq_len, d_model]
 
-        # 5. pooled visual condition + time condition
-        combined_cond = visual_cond + t_cond
-        x_cond = x_emb + combined_cond.unsqueeze(1)
+        # Paper-aligned denoising-time token-wise global-local conditioning.
+        #
+        # Z_t: current token hidden states with timestep and position encoding.
+        # C_g: projected global image condition, broadcast to each report token.
+        # C_p: token-specific local condition from cross-attention over patch tokens.
+        # G_t: token-wise and channel-wise gate computed from [Z_t; C_g; C_p; E_t].
+        # C_t: gated fusion of global and local visual conditions.
+        seq_len = x_emb.size(1)
+        pos = self._positional_encoding(seq_len, device)
 
-        x_cond = x_cond + self._positional_encoding(x_cond.size(1), device)
+        t_cond_token = t_cond.unsqueeze(1).expand(-1, seq_len, -1)       # [B, L, D]
+        z_t = x_emb + t_cond_token + pos                                 # [B, L, D]
 
-        # 7. token-level visual cross-attention
-        x_visual = self.token_visual_attn(
-            query=self.token_visual_norm(x_cond),
-            key=bridge_tokens,
-            value=bridge_tokens
-        )
-        x_cond = x_cond + self.token_visual_drop(x_visual)
+        # W_p^{cond} F_p and W_g^{cond} f_g are implemented by the existing
+        # VisualLanguageBridge projections so the local/global evidence streams
+        # share the same visual projection space used by the released model.
+        patch_tokens = self.visual_bridge.patch_proj(att_feats)           # [B, N, D]
+        global_token = self.visual_bridge.global_proj(fc_feats)           # [B, D]
+
+        c_g = self.global_cond_proj(global_token).unsqueeze(1)            # [B, 1, D]
+        c_g = c_g.expand(-1, seq_len, -1)                                 # [B, L, D]
+
+        c_p = self.token_visual_attn(
+            query=self.token_visual_norm(z_t),
+            key=patch_tokens,
+            value=patch_tokens
+        )                                                                # [B, L, D]
+
+        gate_input = torch.cat([z_t, c_g, c_p, t_cond_token], dim=-1)      # [B, L, 4D]
+        g_t = self.global_local_gate(gate_input)                          # [B, L, D]
+
+        c_t = g_t * c_g + (1.0 - g_t) * c_p                               # [B, L, D]
+        c_t = self.condition_proj(c_t)
+
+        x_cond = self.condition_norm(z_t + self.token_visual_drop(c_t))   # residual injection
+
+        if return_attn and self.token_visual_attn.attn is not None:
+            # [B, H, L, N] -> [B, N], averaged over heads and report-token positions.
+            attn_map = self.token_visual_attn.attn.mean(dim=1).mean(dim=1)
 
         trans_out = self.transformer(x_cond)  # [B, seq_len, d_model]
 
