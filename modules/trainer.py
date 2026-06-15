@@ -25,7 +25,7 @@ class BaseTrainer(object):
         self.save_period = self.args.save_period
 
         self.mnt_mode = args.monitor_mode
-        self.mnt_metric = 'test_' + args.monitor_metric  # use test metric for original-project reproduction
+        self.mnt_metric = 'val_' + args.monitor_metric  # use validation metric for checkpoint selection
         assert self.mnt_mode in ['min', 'max']
 
         self.mnt_best = inf if self.mnt_mode == 'min' else -inf
@@ -40,7 +40,7 @@ class BaseTrainer(object):
         if args.resume is not None:
             self._resume_checkpoint(args.resume)
 
-        self.best_recorder = {'test': {self.mnt_metric: self.mnt_best}}
+        self.best_recorder = {'val': {self.mnt_metric: self.mnt_best}}
 
     @abstractmethod
     def _train_epoch(self, epoch):
@@ -60,11 +60,11 @@ class BaseTrainer(object):
             for key, value in log.items():
                 print('\t{:15s}: {}'.format(str(key), value))
 
-            # Evaluate model performance based on test set
+            # Evaluate model performance based on the validation set
             best = False
             if self.mnt_mode != 'off':
                 try:
-                    # Check if model performance improved on test set
+                    # Check if model performance improved on the validation set
                     improved = (self.mnt_mode == 'min' and log[self.mnt_metric] <= self.mnt_best) or \
                                (self.mnt_mode == 'max' and log[self.mnt_metric] >= self.mnt_best)
                 except KeyError:
@@ -80,7 +80,7 @@ class BaseTrainer(object):
                     not_improved_count += 1
 
                 if not_improved_count > self.early_stop:
-                    print(f"Test performance didn't improve for {self.early_stop} epochs. Training stopped.")
+                    print(f"Validation performance did not improve for {self.early_stop} epochs. Training stopped.")
                     break
 
             if epoch % self.save_period == 0:
@@ -88,13 +88,13 @@ class BaseTrainer(object):
 
         self._print_best()
         self._print_best_to_file()
-        return self.best_recorder['test']
+        return self.best_recorder['val']
 
     def _print_best_to_file(self):
         crt_time = time.asctime(time.localtime(time.time()))
-        self.best_recorder['test']['time'] = crt_time
-        self.best_recorder['test']['seed'] = self.args.seed
-        self.best_recorder['test']['best_model_from'] = 'test'
+        self.best_recorder['val']['time'] = crt_time
+        self.best_recorder['val']['seed'] = self.args.seed
+        self.best_recorder['val']['best_model_from'] = 'validation'
 
         if not os.path.exists(self.args.record_dir):
             os.makedirs(self.args.record_dir)
@@ -107,7 +107,7 @@ class BaseTrainer(object):
 
         record_table = pd.concat([
             record_table,
-            pd.DataFrame([self.best_recorder['test']])
+            pd.DataFrame([self.best_recorder['val']])
         ], ignore_index=True)
 
         record_table.to_csv(record_path, index=False)
@@ -150,14 +150,14 @@ class BaseTrainer(object):
         print(f"Checkpoint loaded. Resuming from epoch {self.start_epoch}")
 
     def _record_best(self, log):
-        improved = (self.mnt_mode == 'min' and log[self.mnt_metric] <= self.best_recorder['test'][self.mnt_metric]) or \
-                   (self.mnt_mode == 'max' and log[self.mnt_metric] >= self.best_recorder['test'][self.mnt_metric])
+        improved = (self.mnt_mode == 'min' and log[self.mnt_metric] <= self.best_recorder['val'][self.mnt_metric]) or \
+                   (self.mnt_mode == 'max' and log[self.mnt_metric] >= self.best_recorder['val'][self.mnt_metric])
         if improved:
-            self.best_recorder['test'].update(log)
+            self.best_recorder['val'].update(log)
 
     def _print_best(self):
-        print(f'Best results (w.r.t {self.args.monitor_metric}) in test set:')
-        for key, value in self.best_recorder['test'].items():
+        print(f'Best results (w.r.t {self.args.monitor_metric}) on the validation set:')
+        for key, value in self.best_recorder['val'].items():
             print(f'\t{key:15s}: {value}')
 
 from tqdm.auto import tqdm
