@@ -94,31 +94,25 @@ def parse_agrs():
     parser.add_argument('--resume', type=str, help='whether to resume the training from existing checkpoints.')
 
     #diffusion model
-    # 图像 & 模型参数
     parser.add_argument('--hidden_dim', type=int, default=256, help='hidden dimension for all layers')
     parser.add_argument('--words_emb_dim', type=int, default=256, help='word embedding dimension')
     parser.add_argument('--vocab_size', type=int, default=12000, help='size of vocabulary')
     parser.add_argument('--seq_length', type=int, default=32, help='seq_length')
 
-    # 报告结构设置
     parser.add_argument('--max_sent', type=int, default=4, help='maximum number of sentences')
     parser.add_argument('--max_word', type=int, default=32, help='maximum number of words per sentence')
 
-    # 扩散相关参数
     # parser.add_argument('--timesteps', type=int, default=12, help='number of diffusion steps')
     parser.add_argument('--beta_schedule', type=str, default='cosine', choices=['linear', 'cosine'],
                         help='beta schedule for diffusion process')
     parser.add_argument('--pred_method', type=str, default='pred_noise', choices=['pred_noise', 'pred_x0'],
                         help='prediction target for diffusion: noise or x0')
 
-    # p2 loss trick（加权扩散损失）
     parser.add_argument('--p2_loss_weight_k', type=float, default=1.0, help='P2 loss weight k')
     parser.add_argument('--p2_loss_weight_gamma', type=float, default=0.0, help='P2 loss weight gamma')
 
-    # 损失函数选择
     parser.add_argument('--loss_type', type=str, default='l1', choices=['l1', 'l2'], help='type of diffusion loss')
 
-    # 训练参数（可选）
     # parser.add_argument('--lr', type=float, default=1e-4)
 
 
@@ -180,7 +174,6 @@ def main():
     for seed in [args.seed]:
         print(f"\n[Final-repro] Using fixed seed: {seed}")
 
-        # 设置随机种子
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
         np.random.seed(seed)
@@ -188,7 +181,6 @@ def main():
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-        # 初始化各组件
         tokenizer = Tokenizer(args)
 
         # Keep diffusion vocabulary size consistent with tokenizer ids.
@@ -225,12 +217,11 @@ def main():
             lr_scheduler, train_dataloader, val_dataloader, test_dataloader
         )
 
-        # 训练一个 epoch 并返回验证指标
-        val_log = trainer.train()  # 假设 train() 里会返回验证结果 dict
+        val_log = trainer.train()
 
 
-        bleu4 = val_log.get('test_BLEU_4', val_log.get('val_BLEU_4', 0.0))
-        print(f"[Seed {seed}] BLEU_4 = {float(bleu4):.4f}")
+        bleu4 = val_log.get('val_BLEU_4', 0.0)
+        print(f"[Seed {seed}] validation BLEU_4 = {float(bleu4):.4f}")
 
 
         if bleu4 > best_bleu4:
@@ -238,9 +229,9 @@ def main():
             best_seed = seed
             best_score = deepcopy(val_log)
         print("\n==========================")
-        print(f"🏆 最佳 Seed: {best_seed}")
-        print(f"📈 最佳 BLEU_4: {best_bleu4:.4f}")
-        print("📊 对应的完整验证指标:")
+        print(f"Best seed: {best_seed}")
+        print(f"Best validation BLEU_4: {best_bleu4:.4f}")
+        print("Corresponding validation metrics:")
         for k, v in best_score.items():
             print(f"{k}: {v}")
 

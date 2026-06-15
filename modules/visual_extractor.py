@@ -12,7 +12,7 @@ class VisualExtractor(nn.Module):##############SwinTransformerV2#######
     def __init__(self, args):
         super(VisualExtractor, self).__init__()
         self.use_lesion_mask = getattr(args, "use_lesion_mask", False)
-        self.lesion_alpha = getattr(args, "lesion_alpha", 0.5)  # 强度系数
+        self.lesion_alpha = getattr(args, "lesion_alpha", 0.5)
         self.mask_pool = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
         self.visual_extractor_name = args.visual_extractor
         self.pretrained = args.visual_extractor_pretrained
@@ -20,13 +20,10 @@ class VisualExtractor(nn.Module):##############SwinTransformerV2#######
         if self.visual_extractor_name == 'swim_transformer_v2':
             full_model = SwinTransformerV2(pretrained=self.pretrained)
 
-            # 按需截取 backbone
             self.patch_embed = full_model.patch_embed
-            self.layers = full_model.layers  # 这是 ModuleList
+            self.layers = full_model.layers
             self.norm = full_model.norm
 
-            # 不要用分类头
-            # self.head = full_model.head  ← 不用这个
         else:
             raise NotImplementedError
 

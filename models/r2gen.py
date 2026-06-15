@@ -24,7 +24,7 @@ class R2GenModel1(nn.Module):
         return super().__str__() + '\nTrainable parameters: {}'.format(params)
 
     def forward_iu_xray(self, images, targets=None, mode='train'):
-        att_feats, fc_feats = self.visual_extractor(images)  # 只计算一次
+        att_feats, fc_feats = self.visual_extractor(images)
         if mode == 'train':
             output = self.encoder_decoder(fc_feats, att_feats, targets, mode='forward')
         elif mode == 'sample':
@@ -46,42 +46,35 @@ class R2GenModel1(nn.Module):
 
 def top_k_top_p_filtering(logits, top_k=0, top_p=1.0, filter_value=-float('Inf')):
     """
-    对logits进行top-k和top-p过滤
+    Apply top-k and top-p filtering to logits.
 
-    参数:
-        logits: 模型输出的原始logits [batch_size, seq_len, vocab_size]
-        top_k: 保留概率最高的k个token (0表示不限制)
-        top_p: 保留累计概率达到p的最小token集合 (1.0表示不限制)
-        filter_value: 被过滤token设置的值
+    Args:
+        logits: Raw model logits with shape [batch_size, seq_len, vocab_size].
+        top_k: Number of highest-probability tokens to keep; 0 disables top-k filtering.
+        top_p: Smallest cumulative-probability token set to keep; 1.0 disables top-p filtering.
+        filter_value: Value assigned to filtered logits.
 
-    返回:
-        过滤后的logits [batch_size, seq_len, vocab_size]
+    Returns:
+        Filtered logits with shape [batch_size, seq_len, vocab_size].
     """
-    # 确保输入是3D张量
-    assert logits.dim() == 3, "Logits应该是3D张量[batch, seq_len, vocab]"
+    assert logits.dim() == 3, "Logits should be a 3D tensor [batch, seq_len, vocab]"
 
     batch_size, seq_len, vocab_size = logits.shape
     filtered_logits = logits.clone()
 
     for b in range(batch_size):
         for s in range(seq_len):
-            # 获取当前时间步的logits
             current_logits = logits[b, s, :]
 
-            # Top-k过滤
             if top_k > 0:
-                # 获取top-k的阈值
                 indices_to_remove = current_logits < torch.topk(current_logits, top_k)[0][..., -1, None]
                 current_logits[indices_to_remove] = filter_value
 
-            # Top-p (nucleus)过滤
             if top_p < 1.0:
                 sorted_logits, sorted_indices = torch.sort(current_logits, descending=True)
                 cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
 
-                # 移除累计概率超过top_p的token
                 sorted_indices_to_remove = cumulative_probs > top_p
-                # 保留第一个超过阈值的token
                 sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
                 sorted_indices_to_remove[..., 0] = 0
 
@@ -92,7 +85,6 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=1.0, filter_value=-float('Inf')
 
     return filtered_logits
 
-#######################扩散模型版##########################
 def sample_next_token(logits, temperature=1.0, top_k=50):
     if temperature > 0:
         logits = logits / temperature
@@ -126,8 +118,8 @@ class R2GenModel(nn.Module):
         self.tokenizer = tokenizer
         self.visual_extractor = VisualExtractor(args)
         self.diffusion = DiscreteDiffusion(args, tokenizer)
-        self.num_timesteps = args.num_diffusion_steps  # 需从 args 传入扩散步数
-        self.vocab_size = args.vocab_size + 1  # 需包含 [PAD]
+        self.num_timesteps = args.num_diffusion_steps
+        self.vocab_size = args.vocab_size + 1
 
         if args.dataset_name == 'iu_xray':
             self.forward = self.forward_iu_xray
@@ -141,18 +133,14 @@ class R2GenModel(nn.Module):
 
     def train_step(self, fc_feats, att_feats, targets):
         # print(f"[MASK] id: {self.tokenizer.mask_token_id}")
-        # print(f"[.] id: {self.tokenizer.token_to_id('.')}")  # 或 self.tokenizer.token2idx["."] 视你用的 tokenizer 而定
         # print(f"<eos> id: {self.tokenizer.eos_token_id}")
 
-        # 1. 确保输入连续
         targets = targets.contiguous()
 
-        # 2. 扩散过程
         t = torch.randint(0, self.num_timesteps, (targets.size(0),),
                           device=targets.device, dtype=torch.long)
         x_t = self.diffusion.forward(targets, att_feats, fc_feats, t)
 
-        # 3. 去噪过程
         # Compatibility with diffusion.q_sample() variants that return
         # (corrupted_tokens, corruption_mask) rather than only corrupted_tokens.
         if isinstance(x_t, (tuple, list)):
@@ -167,14 +155,12 @@ class R2GenModel(nn.Module):
         except Exception:
             visual_cond = None
 
-        # 4. 计算主扩散 token 重建损失
         loss = F.cross_entropy(
             logits.reshape(-1, self.vocab_size),
             targets.reshape(-1),
             ignore_index=self.tokenizer.pad_token_id
         )
 
-        # 5. 返回完整训练字典，供 MFSL 使用
         return {
             'logits': logits,
             'loss': loss,
@@ -204,12 +190,10 @@ class R2GenModel(nn.Module):
             device = att_feats.device
             mask_id = int(self.tokenizer.mask_token_id)
 
-            # 初始化 - 使用mask token
             x_t = torch.full((batch_size, max_len),
                              mask_id,
                              device=device)
 
-            # 准备高 n-gram ID 列表（提前移到 GPU）
             high_ngram_ids = torch.tensor(self.tokenizer.high_ngram_ids, device=device)
 
             sample_steps = getattr(self.args, 'sample_diffusion_steps', None)
@@ -279,19 +263,15 @@ class R2GenModel(nn.Module):
                 t_tensor = torch.full((batch_size,), int(t), device=device, dtype=torch.long)
                 logits, _ = self.diffusion.denoise_step(x_t, att_feats, fc_feats, t_tensor)
 
-                # ✅ 应用长度惩罚
                 current_alpha = min(alpha * (1 + int(t) / self.num_timesteps), 2.0)
                 for pos in range(max_len):
                     length_penalty = ((5 + pos) / (5 + 1)) ** current_alpha
                     logits[:, pos, :] = logits[:, pos, :] / length_penalty
 
-                # ✅ 屏蔽 <unk>
                 logits[:, :, self.tokenizer.unk_token_id] = -float('inf')
 
-                # ✅ 提升高 n-gram 的 logits
                 logits[:, :, high_ngram_ids] *= ngram_boost  # e.g. 1.5 ~ 2.0
 
-                # ✅ 温度采样 & top-k
                 probs = F.softmax(logits / temperature, dim=-1)
                 x_t = self._sample_with_topk(probs, top_k)
 
@@ -306,12 +286,10 @@ class R2GenModel(nn.Module):
 
 
     def _sample_with_topk(self, probs, top_k):
-        """优化后的Top-K采样，支持n-gram奖励的向量化计算"""
         batch_size, seq_len, vocab_size = probs.shape
         device = probs.device
 
-        # === 预计算n-gram索引和权重 ===
-        if not hasattr(self, '_n_gram_indices'):  # 缓存计算结果
+        if not hasattr(self, '_n_gram_indices'):
             self._n_gram_indices = {
                 2: torch.tensor([idx for idx, t in self.tokenizer.idx2token.items()
                                  if len(t.split()) == 2], device=device),
@@ -322,25 +300,20 @@ class R2GenModel(nn.Module):
             }
             self._n_gram_weights = torch.ones(vocab_size, device=device)
             # for n, indices in self._n_gram_indices.items():
-            #     self._n_gram_weights[indices] = 1.0 - 0 * n  # n-gram奖励系数
 
-        # === 向量化n-gram奖励 ===
         boosted_probs = probs * self._n_gram_weights.unsqueeze(0).unsqueeze(0)  # [B,L,V]
 
-        # === Top-K过滤 ===
         if top_k > 0:
             topk_probs, topk_indices = torch.topk(boosted_probs, top_k, dim=-1)  # [B,L,K]
 
-            # 重建概率分布（保持原始形状）
             sampled_probs = torch.zeros_like(boosted_probs).scatter_(
                 -1, topk_indices, topk_probs)
             sampled_probs = sampled_probs / sampled_probs.sum(dim=-1, keepdim=True)
         else:
             sampled_probs = boosted_probs
 
-        # === 并行采样 ===
         samples = torch.multinomial(
-            sampled_probs.view(-1, vocab_size),  # 展平为[B*L, V]
+            sampled_probs.view(-1, vocab_size),
             num_samples=1
         ).view(batch_size, seq_len)
 

@@ -7,7 +7,7 @@ This repository contains the code used for the SEDRRG radiology report generatio
 ## Main components
 
 - Discrete report-token diffusion for chest X-ray report generation.
-- Code-aligned MFSL training objective.
+- Implementation-consistent MFSL training objective.
 - Medical token/phrase consistency, report-structure token consistency, and lightweight image-memory alignment.
 - CheXbert-label-based clinical efficacy evaluation after generation.
 - Optional token-space denoising trace export.
@@ -51,6 +51,8 @@ Train on MIMIC-CXR:
 
 The scripts are runnable examples. Adjust paths, batch size, and worker number according to your local hardware and dataset location.
 
+Checkpoint selection is based on validation-set BLEU-4. Held-out test sets are used only for final evaluation.
+
 ## Testing
 
 Test on IU X-Ray:
@@ -68,7 +70,7 @@ To export token-space reverse diffusion traces, add these flags to main_test.py:
     --export_denoising_trace
     --trace_output results/iu_xray_trace/denoising_trace.jsonl
 
-The exported trace records report-token states and sampling statistics in token space. It should not be interpreted as image or pixel denoising.
+The exported trace records report-token states and sampling statistics in token space. It should not be interpreted as image or pixel denoising. The active diffusion sampler does not use beam search.
 
 ## Clinical efficacy evaluation
 
@@ -81,7 +83,7 @@ By default, compute_ce.py expects:
     results/mimic_cxr/res_labeled.csv
     results/mimic_cxr/gts_labeled.csv
 
-The script maps uncertain labels to non-positive labels and computes multi-label clinical efficacy metrics using the extracted label vectors.
+The script maps uncertain labels to non-positive labels and computes CheXbert-label-based micro-averaged precision, recall, and F1 using the extracted label vectors.
 
 ## Notes
 

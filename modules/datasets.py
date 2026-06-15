@@ -78,30 +78,22 @@ class IuxrayMultiImageDataset(BaseDataset):
         sample = (image_id, image_1, report_ids, report_masks, seq_length)
         return sample
 
-###########################################mimic版#####################################
 # import numpy as np
 # class IuxrayMultiImageDataset(BaseDataset):
 #     def __getitem__(self, idx):
-#         # 创建默认的PIL图像（中灰色）
 #         default_pil = Image.new('RGB', (256, 256), (128, 128, 128))
 #
 #         example = self.examples[idx]
-#         image_id = example['id']  #如果是mimic数据集改成dicom_id
 #         image_path = example['image_path']
 #
 #         try:
-#             # 尝试加载并转换图像
 #             image_1 = Image.open(os.path.join(self.image_dir, image_path)).convert('RGB')
 #             if hasattr(self, 'transform') and self.transform is not None:
-#                 image_1 = self.transform(image_1)  # 此时image_1应该是PIL图像
 #         except Exception as e:
-#             # 打印前10个错误避免日志爆炸
 #             if not hasattr(self, '_error_count'):
 #                 self._error_count = 0
 #             if self._error_count < 10:
-#                 print(f"图像加载失败，使用默认图像: {image_path} | 错误: {str(e)}")
 #                 self._error_count += 1
-#             # 使用默认图像（确保应用相同的transform）
 #             image_1 = self.transform(default_pil) if hasattr(self,
 #                                                              'transform') and self.transform is not None else default_pil
 #
@@ -109,7 +101,6 @@ class IuxrayMultiImageDataset(BaseDataset):
 #         report_masks = example['mask']
 #         seq_length = len(report_ids)
 #
-#         # 确保最终image_1是张量
 #         if isinstance(image_1, Image.Image):
 #             image_1 = torch.tensor(np.array(image_1)).permute(2, 0, 1).float() / 255.0
 #

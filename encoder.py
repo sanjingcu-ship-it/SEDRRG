@@ -26,18 +26,14 @@ class EncoderCNN(nn.Module):
     def __init__(self):
         super(EncoderCNN, self).__init__()
 
-        # 如果需要预处理，请使用预处理模块
         # self.diffusion_pipeline = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
 
-        # 使用 ViT 进行特征提取
         self.vit = Vito(image_size=224, patch_size=32, num_classes=1000, dim=256, depth=12, heads=12, mlp_dim=2048, dropout=0.1, emb_dropout=0.1)
         self.enc_dim = 768
 
     def forward(self, x):
-        # 如果需要预处理，可以先处理 x
         # x = self.diffusion_pipeline(x)["sample"]
 
-        # 直接使用 ViT 提取特征
         x = self.vit(x)
         return x
 
@@ -49,12 +45,10 @@ class Vito(ViT):
         # print("2", x.shape)
         b, n, _ = x.shape
 
-        # 动态调整位置编码
         cls_tokens = repeat(self.cls_token, '() n d -> b n d', b=b)
         x = torch.cat((cls_tokens, x), dim=1)
         # print("3", x.shape)
 
-        # 解决方案：插值扩展位置编码
         if n + 1 > self.pos_embedding.shape[1]:
             pos_embed = F.interpolate(
                 self.pos_embedding.permute(0, 2, 1),
@@ -95,46 +89,37 @@ class ImprovedEncoder(nn.Module):
         super(ImprovedEncoder, self).__init__()
         self.from_x = from_x
 
-        # 使用 ResNet-50 作为特征提取器
         resnet = models.resnet50(pretrained=use_pretrained)
         modules = list(resnet.children())[:from_x]
         self.resnet = nn.Sequential(*modules)
 
-        # 通道注意力机制（SENet）
         self.se_block = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(2048, 2048 // 16, kernel_size=1),  # 输入通道数改为 2048
+            nn.Conv2d(2048, 2048 // 16, kernel_size=1),
             nn.ReLU(),
-            nn.Conv2d(2048 // 16, 2048, kernel_size=1),  # 输出通道数改为 2048
+            nn.Conv2d(2048 // 16, 2048, kernel_size=1),
             nn.Sigmoid()
         )
 
-        # 多尺度特征融合
-        self.conv1x1 = nn.Conv2d(2048, word_dim, kernel_size=1)  # 输入通道数改为 2048
+        self.conv1x1 = nn.Conv2d(2048, word_dim, kernel_size=1)
 
-        # 非线性降维
         self.linear = nn.Sequential(
-            nn.Linear(word_dim, word_dim),  # 输入维度改为 word_dim
+            nn.Linear(word_dim, word_dim),
             nn.GELU(),
             nn.Linear(word_dim, word_dim)
         )
 
     def forward(self, x):
-        # ResNet 特征提取
         x = self.resnet(x)  # (batch_size, 2048, h, w)
 
-        # 通道注意力机制
         se_weights = self.se_block(x)
         x = x * se_weights
 
-        # 多尺度特征融合
         x = self.conv1x1(x)  # (batch_size, word_dim, h, w)
 
-        # 调整形状
         if self.from_x != -1:
             x = rearrange(x, 'b d h w -> b (h w) d')  # (batch_size, h*w, word_dim)
 
-        # 非线性降维
         x = self.linear(x)  # (batch_size, h*w, word_dim)
 
         return x

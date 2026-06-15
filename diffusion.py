@@ -11,17 +11,11 @@ from math import sqrt
 #         self.num_timesteps = args.num_diffusion_steps
 #         self.tokenizer = tokenizer
 #
-#         # 1. 视觉特征投影
-#         self.att_proj = nn.Linear(2048, args.d_model)  # att_feats投影
-#         self.fc_proj = nn.Linear(2048, args.d_model)  # fc_feats投影
 #
-#         # 2. 新增时间步嵌入层
 #         self.time_embed = nn.Embedding(args.num_diffusion_steps, args.d_model)
 #
-#         # 3. Token嵌入层
 #         self.token_embed = nn.Embedding(self.vocab_size, args.d_model)
 #
-#         # 4. 去噪网络
 #         encoder_layer = nn.TransformerEncoderLayer(
 #             d_model=args.d_model,
 #             nhead=args.num_heads,
@@ -30,10 +24,8 @@ from math import sqrt
 #         )
 #         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=args.num_layers)
 #
-#         # 5. 输出头
 #         self.head = nn.Linear(args.d_model, self.vocab_size)
 #
-#         # 6. 转移矩阵
 #         self.register_buffer('transition_matrix', self.build_transition_matrix())
 #
 #     def build_transition_matrix(self):
@@ -42,51 +34,36 @@ from math import sqrt
 #         return matrix
 #
 #     def forward(self, x_0, att_feats, fc_feats, t):
-#         """前向扩散过程：对输入 x_0 添加噪声"""
 #         batch_size, seq_len = x_0.shape
 #
-#         # 采样噪声
 #         noise = torch.multinomial(
 #             self.transition_matrix[x_0.flatten()],
 #             num_samples=1
 #         ).view(batch_size, seq_len)
 #
-#         # 修正：确保 t 的形状能与 x_0 比较
-#         t = t.view(-1, 1)  # 从 [batch_size] 变为 [batch_size, 1]
 #         mask = (torch.rand_like(x_0.float()) < (t / self.num_timesteps))
 #
 #         x_t = torch.where(mask, noise, x_0)
 #         return x_t
 #
 #     def denoise_step(self, x_t, att_feats, fc_feats, t):
-#         """完整修正后的去噪步骤"""
 #
 #         if isinstance(t, int):
 #             t = torch.tensor([t], device=x_t.device).expand(x_t.size(0))
 #         t = t.long().to(x_t.device)
 #
-#         assert t.dim() == 1, f"时间步t应为1D张量，得到{t.shape}"
-#         assert t.size(0) == x_t.size(0), "批次大小不匹配"
 #
-#         # 输入验证
-#         assert x_t.dim() == 2, f"x_t应为2D张量，实际得到{x_t.shape}"
-#         # assert t.dim() == 1, f"t应为1D张量，实际得到{t.shape}"
 #
-#         # 1. 视觉条件处理
 #         att_emb = self.att_proj(att_feats.mean(1))  # [16,49,2048]->[16,512]
 #         fc_emb = self.fc_proj(fc_feats)  # [16,2048]->[16,512]
 #         cond = att_emb + fc_emb
 #
-#         # 2. 时间步嵌入
 #         t_emb = self.time_embed(t)  # [16]->[16,512]
 #
-#         # 3. Token嵌入
 #         x_emb = self.token_embed(x_t)  # [16,seq_len]->[16,seq_len,512]
 #
-#         # 4. 合并条件
 #         x_emb = x_emb + cond.unsqueeze(1) + t_emb.unsqueeze(1)
 #
-#         # 5. Transformer处理
 #         logits = self.transformer(x_emb)  # [16,seq_len,512]
 #         logits = self.head(logits)  # [16,seq_len,vocab_size]
 #
@@ -145,7 +122,6 @@ class VisualConditioner(nn.Module):
         self.d_model = d_model
         self.num_heads = num_heads
 
-        # 视觉特征投影
         self.att_proj = nn.Sequential(
             nn.Linear(visual_dim, d_model),
             LayerNorm(d_model),
@@ -159,15 +135,12 @@ class VisualConditioner(nn.Module):
             nn.GELU(),
             nn.Dropout(dropout))
 
-        # 多模态注意力
         self.cross_attn = MultiHeadedAttention(num_heads, d_model, dropout)
 
-        # 门控融合
         self.gate = nn.Sequential(
             nn.Linear(d_model * 2, d_model),
             nn.Sigmoid())
 
-        # 输出归一化
         self.out_norm = LayerNorm(d_model)
         self.out_drop = nn.Dropout(dropout)
 
@@ -176,54 +149,44 @@ class VisualConditioner(nn.Module):
     #     att_feats: [batch, num_regions, visual_dim]
     #     fc_feats: [batch, visual_dim]
     #     """
-    #     # 投影视觉特征
     #     att_proj = self.att_proj(att_feats)  # [B, N, D]
     #     fc_proj = self.fc_proj(fc_feats).unsqueeze(1)  # [B, 1, D]
     #
-    #     # 跨注意力机制
     #     context = self.cross_attn(
-    #         query=fc_proj,  # 用全局特征作为查询
     #         key=att_proj,
     #         value=att_proj
     #     )  # [B, 1, D]
     #
-    #     # 门控融合
     #     combined = torch.cat([fc_proj, context], dim=-1)
     #     gate = self.gate(combined)
     #     fused = gate * fc_proj + (1 - gate) * context
     #
-    #     # 输出处理
     #     return self.out_drop(self.out_norm(fused.squeeze(1)))  # [B, D]
 
     def forward(self, att_feats, fc_feats, return_attn=False):
         """
         att_feats: [B, N, D]
         fc_feats:  [B, D]
-        return_attn: 是否返回 cross-attention 热图
+        return_attn: whether to return the cross-attention heatmap
         """
-        # 1) 投影视觉特征
         att_proj = self.att_proj(att_feats)  # [B, N, D]
         fc_proj = self.fc_proj(fc_feats).unsqueeze(1)  # [B, 1, D]
 
-        # 2) 跨注意力
         context = self.cross_attn(
             query=fc_proj,
             key=att_proj,
             value=att_proj
         )  # [B, 1, D]
 
-        # 3) 从 MultiHeadedAttention 里取出注意力权重
         # self.cross_attn.attn: [B, num_heads, 1, N]
         attn_map = None
         if return_attn and self.cross_attn.attn is not None:
             attn_map = self.cross_attn.attn.mean(dim=1).squeeze(1)  # [B, N]
 
-        # 4) 门控融合
         combined = torch.cat([fc_proj, context], dim=-1)
         gate = self.gate(combined)
         fused = gate * fc_proj + (1 - gate) * context
 
-        # 5) 输出处理
         fused_out = self.out_drop(self.out_norm(fused.squeeze(1)))  # [B, D]
 
         if return_attn:
@@ -234,11 +197,11 @@ class VisualConditioner(nn.Module):
 
 class VisualLanguageBridge(nn.Module):
     """
-    将 patch/global 视觉特征桥接成一小组更适合文本生成器使用的 bridge tokens。
-    返回:
+    Bridge patch-level and global visual features into compact tokens for the text generator.
+    Returns:
         bridge_tokens: [B, Q, D]
         pooled_cond:   [B, D]
-        attn_map:      [B, N] (可选，仅 patch 部分)
+        attn_map:      [B, N], optional patch-level attention map
     """
     def __init__(self, visual_dim, d_model, num_heads, num_query_tokens=8, dropout=0.1):
         super().__init__()
@@ -291,7 +254,7 @@ class VisualLanguageBridge(nn.Module):
             # [B, H, Q, 1+N] -> [B, 1+N]
             attn_map = self.cross_attn.attn.mean(dim=1).mean(dim=1)
             if attn_map.size(1) == att_feats.size(1) + 1:
-                attn_map = attn_map[:, 1:]  # 去掉 global token 对应位置，仅保留 patch 热图
+                attn_map = attn_map[:, 1:]
 
         pooled_bridge = bridge_tokens.mean(dim=1)
         pooled_global = global_token.squeeze(1)
@@ -310,7 +273,6 @@ class VisualLanguageBridge(nn.Module):
 class ConditionalLayerNorm(nn.Module):
     def __init__(self, d_model, rm_num_slots, rm_d_model, eps=1e-6):
         super().__init__()
-        # 确保参数是整数
         self.d_model = int(d_model)
         self.rm_num_slots = int(rm_num_slots)
         self.rm_d_model = int(rm_d_model)
@@ -319,7 +281,6 @@ class ConditionalLayerNorm(nn.Module):
         self.beta = nn.Parameter(torch.zeros(self.d_model))
         self.eps = eps
 
-        # 更稳定的MLP设计
         self.mlp_gamma = nn.Sequential(
             nn.Linear(self.rm_num_slots * self.rm_d_model, self.rm_d_model),
             nn.LayerNorm(self.rm_d_model),
@@ -334,22 +295,18 @@ class ConditionalLayerNorm(nn.Module):
             nn.Linear(self.rm_d_model, self.d_model)
         )
 
-        # 初始化
         nn.init.xavier_uniform_(self.mlp_gamma[-1].weight, gain=0.01)
         nn.init.xavier_uniform_(self.mlp_beta[-1].weight, gain=0.01)
         nn.init.constant_(self.mlp_gamma[-1].bias, 0.)
         nn.init.constant_(self.mlp_beta[-1].bias, 0.)
 
     def forward(self, x, memory):
-        # 输入形状处理
         if memory.dim() == 3:  # [B, num_slots, d_model]
             memory = memory.flatten(start_dim=1)  # [B, num_slots*d_model]
 
-        # 计算delta
         delta_gamma = self.mlp_gamma(memory).unsqueeze(1)  # [B, 1, d_model]
         delta_beta = self.mlp_beta(memory).unsqueeze(1)  # [B, 1, d_model]
 
-        # 标准化
         mean = x.mean(-1, keepdim=True)
         std = x.std(-1, keepdim=True)
 
@@ -358,7 +315,7 @@ class DiscreteDiffusion(nn.Module):
     def __init__(self, args, tokenizer):
         super().__init__()
         self.relational_memory = RelationalMemory(num_slots=3, d_model=args.d_model)
-        self.vocab_size = args.vocab_size + 1  # 包含[PAD]
+        self.vocab_size = args.vocab_size + 1
         self.num_timesteps = args.num_diffusion_steps
         self.tokenizer = tokenizer
         self.args = args
@@ -370,15 +327,14 @@ class DiscreteDiffusion(nn.Module):
         )
         self.dropout = nn.Dropout(args.dropout)
 
-        # # 改进1: 更灵活的特征投影
         # self.visual_conditioner = VisualConditioner(
         #     visual_dim=2048,
         #     d_model=args.d_model,
         #     num_heads=args.num_heads
         # )
-        # 替换原有的visual_conditioner
+        # Replace the original visual conditioner.
         self.visual_conditioner = VisualConditioner(
-            visual_dim=768,  # 假设视觉特征维度#如果是res101就换成2048
+            visual_dim=768,  # visual feature dimension; use 2048 for ResNet-101 features
             d_model=args.d_model,
             num_heads=args.num_heads,
             dropout=args.dropout
@@ -403,7 +359,6 @@ class DiscreteDiffusion(nn.Module):
             nn.Linear(args.d_model * 4, args.d_model),
             LayerNorm(args.d_model))
 
-        # 改进2: 增强的时间步处理
         self.time_embed = nn.Sequential(
             nn.Embedding(args.num_diffusion_steps, args.d_model),
             nn.Linear(args.d_model, args.d_model),
@@ -411,51 +366,44 @@ class DiscreteDiffusion(nn.Module):
             nn.Linear(args.d_model, args.d_model)
         )
 
-        # 改进3: 更丰富的token嵌入
         self.token_embed = nn.Sequential(
             nn.Embedding(self.vocab_size, args.d_model),
             nn.LayerNorm(args.d_model)
         )
 
-        # 改进4: 增强的Transformer架构
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=args.d_model,
             nhead=args.num_heads,
-            dim_feedforward=args.d_ff * 2,  # 扩大FFN维度
+            dim_feedforward=args.d_ff * 2,
             dropout=args.dropout,
             activation='gelu',
             batch_first=True,
-            norm_first=True  # 前置LayerNorm
+            norm_first=True
         )
         self.transformer = nn.TransformerEncoder(
             encoder_layer,
             num_layers=args.num_layers
         )
 
-        # 改进5: 自适应输出头
         self.head = nn.Sequential(
             nn.Linear(args.d_model, args.d_model * 2),
             nn.GELU(),
             nn.Linear(args.d_model * 2, self.vocab_size)
         )
 
-        # 改进6: 可学习的转移矩阵
         self.transition_logits = nn.Parameter(
             torch.randn(self.vocab_size, self.vocab_size) * 0.02)
         self.transition_norm = nn.Softmax(dim=-1)
 
-        # 改进7: 噪声调度注册
         self.register_buffer('sqrt_alphas', self._create_noise_schedule('cosine'))
         self.register_buffer('sqrt_one_minus_alphas', torch.sqrt(1 - self.sqrt_alphas ** 2))
 
         self.pos_embed = nn.Parameter(torch.randn(1, int(getattr(args, 'max_seq_length', 100)), args.d_model))
-        # 在DiscreteDiffusion的__init__中
 
 
 
 
     def _create_noise_schedule(self, schedule_type, s=0.008):
-        """创建噪声调度表"""
         steps = self.num_timesteps
         if schedule_type == 'linear':
             return torch.linspace(1 - s, s, steps)
@@ -468,7 +416,6 @@ class DiscreteDiffusion(nn.Module):
 
     @property
     def transition_matrix(self):
-        """可学习的转移矩阵"""
         return self.transition_norm(self.transition_logits)
 
     def forward(self, x_0, att_feats, fc_feats, t):
@@ -503,13 +450,10 @@ class DiscreteDiffusion(nn.Module):
         B = x_t.size(0)
         device = x_t.device
 
-        # 1. 初始化记忆
         if memory is None:
             memory = torch.zeros(B, 3, self.args.d_model, device=device)
 
-        # 2. 调整视觉特征维度
         # cond = self.visual_conditioner(att_feats, fc_feats)  # [B, 2048]
-        # cond = cond[:, :self.args.d_model]  # 截取前d_model维 [B, d_model]
 
         # visual_cond = self.visual_conditioner(att_feats, fc_feats)  # [B, D]
         if return_attn:
@@ -522,18 +466,15 @@ class DiscreteDiffusion(nn.Module):
             )
             attn_map = None
 
-        # 3. 时间步嵌入
         t_emb = self.time_embed(t)  # [B, d_model]
         t_cond = self.time_mlp(t_emb)  # [B, D]
 
-        # 4. Token嵌入
         x_emb = self.token_embed(x_t)  # [B, seq_len, d_model]
 
         # 5. pooled visual condition + time condition
         combined_cond = visual_cond + t_cond
         x_cond = x_emb + combined_cond.unsqueeze(1)
 
-        # 6. 位置编码
         x_cond = x_cond + self._positional_encoding(x_cond.size(1), device)
 
         # 7. token-level visual cross-attention
@@ -544,35 +485,24 @@ class DiscreteDiffusion(nn.Module):
         )
         x_cond = x_cond + self.token_visual_drop(x_visual)
 
-        # 8. 使用Transformer提取特征
         trans_out = self.transformer(x_cond)  # [B, seq_len, d_model]
 
-        # 7c. 使用RelationalMemory进一步处理序列上下文
         memory = self.relational_memory(memory, trans_out)  # [B, slots, d_model]
 
-        # 7d. 将记忆拼接或融合回输出
-        # 方式1：取memory最后一个slot，拼接
         memory_summary = memory[:, -1, :].unsqueeze(1).expand(-1, x_cond.size(1), -1)  # [B, seq_len, d_model]
 
-        # 7e. 合并transformer输出和记忆
         # final_rep = trans_out + memory_summary  # [B, seq_len, d_model]
-        # 修改denoise_step中的特征处理
-        # 直接应用条件层归一化
         trans_out_norm = self.cond_layer_norm(trans_out + memory_summary, memory)
 
-        # 添加残差连接和dropout
         final_rep = trans_out + self.dropout(trans_out_norm)
 
-        # 7f. 输出预测
         logits = self.head(final_rep)
 
-        # 添加logits检查
         if torch.isnan(logits).any() or torch.isinf(logits).any():
-            print("警告：logits包含NaN或Inf值")
+            print("Warning: logits contain NaN or Inf values")
             logits = torch.nan_to_num(logits, nan=0.0, posinf=1e8, neginf=-1e8)
 
-        # 添加logits归一化
-        logits = logits / torch.max(torch.abs(logits)) * 10  # 将logits范围限制在[-10,10]之间
+        logits = logits / torch.max(torch.abs(logits)) * 10
 
         #return logits, memory
         if return_attn:
@@ -580,7 +510,6 @@ class DiscreteDiffusion(nn.Module):
         return logits, memory
 
     def _positional_encoding(self, seq_len, device):
-        """正弦位置编码"""
         position = torch.arange(seq_len, device=device).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, self.args.d_model, 2, device=device) *
                              (-math.log(10000.0) / self.args.d_model))
@@ -590,19 +519,15 @@ class DiscreteDiffusion(nn.Module):
         return pe
 
 # class VisualConditioner(nn.Module):
-#     """改进的视觉条件处理器"""
 #
 #     def __init__(self, visual_dim, d_model, num_heads):
 #         super().__init__()
-#         # 注意力特征处理
 #         self.att_proj = nn.Linear(visual_dim, d_model)
 #         self.att_norm = nn.LayerNorm(d_model)
 #
-#         # 全局特征处理
 #         self.fc_proj = nn.Linear(visual_dim, d_model)
 #         self.fc_norm = nn.LayerNorm(d_model)
 #
-#         # 交叉注意力融合
 #         self.cross_attn = nn.MultiheadAttention(
 #             embed_dim=d_model,
 #             num_heads=num_heads,
@@ -610,13 +535,10 @@ class DiscreteDiffusion(nn.Module):
 #         )
 #
 #     def forward(self, att_feats, fc_feats):
-#         # 处理注意力特征
 #         att_emb = self.att_norm(self.att_proj(att_feats.mean(1)))
 #
-#         # 处理全局特征
 #         fc_emb = self.fc_norm(self.fc_proj(fc_feats))
 #
-#         # 交叉注意力融合
 #         cond, _ = self.cross_attn(
 #             query=fc_emb.unsqueeze(1),
 #             key=att_emb.unsqueeze(1),
@@ -625,14 +547,12 @@ class DiscreteDiffusion(nn.Module):
 #         return cond.squeeze(1)
 
 class TransformerDenoiser(nn.Module):
-    """去噪网络：基于 Transformer 的条件扩散模型"""
 
     def __init__(self, args):
         super().__init__()
         self.embedding = nn.Embedding(args.vocab_size + 1, args.d_model)
         self.time_embed = nn.Embedding(args.num_diffusion_steps, args.d_model)
 
-        # Transformer 层（简化版）
         self.transformer = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
                 d_model=args.d_model,
@@ -646,15 +566,11 @@ class TransformerDenoiser(nn.Module):
         self.head = nn.Linear(args.d_model, args.vocab_size + 1)
 
     def forward(self, x_t, image_emb, t):
-        # 输入嵌入
         x_emb = self.embedding(x_t)  # [batch, seq_len, d_model]
         t_emb = self.time_embed(t)  # [batch, d_model]
 
-        # 融合视觉条件 + 时间步
         x_emb = x_emb + image_emb.unsqueeze(1) + t_emb.unsqueeze(1)
 
-        # Transformer 处理
         x_out = self.transformer(x_emb)
 
-        # 预测 logits
         return self.head(x_out)

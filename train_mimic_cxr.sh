@@ -12,6 +12,7 @@ python main_train_repro_final.py \
 --step_size 1 \
 --gamma 0.8 \
 --seed 456789 \
+--lr_ed 8e-7 \
 --num_diffusion_steps 9 \
 --sample_diffusion_steps 9 \
 --sample_max_len 100 \

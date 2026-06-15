@@ -40,7 +40,6 @@ class BaseTrainer(object):
         if args.resume is not None:
             self._resume_checkpoint(args.resume)
 
-        # 只保留 test 的记录
         self.best_recorder = {'test': {self.mnt_metric: self.mnt_best}}
 
     @abstractmethod
@@ -178,13 +177,9 @@ class Trainer(BaseTrainer):
         for batch_idx, (images_id, images, reports_ids, reports_masks) in enumerate(tqdm(self.train_dataloader)):
             images, reports_ids, reports_masks = images.to(self.device), reports_ids.to(self.device), reports_masks.to(
                 self.device)
-            # 前向传播
             outputs = self.model(images, reports_ids, mode='train')
-            # 损失计算
             # loss = self.criterion(
             #     outputs,
-            #     reports_ids[:, 1:],  # 去掉起始token
-            #     reports_masks[:, 1:]  # 对应mask
             # )
             loss = self.criterion(
                 outputs,
@@ -203,33 +198,18 @@ class Trainer(BaseTrainer):
 
             train_loss += loss.item()
             self.optimizer.zero_grad()
-            # 反向传播
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
             # torch.nn.utils.clip_grad_value_(self.model.parameters(), 0.1)
             self.optimizer.step()
         log = {'train_loss': train_loss / len(self.train_dataloader)}
 
-        # self.model.eval()
-        # with torch.no_grad():
-        #     val_gts, val_res = [], []
-        #     for batch_idx, (images_id, images, reports_ids, reports_masks) in enumerate(tqdm(self.val_dataloader)):
-        #         images, reports_ids, reports_masks = images.to(self.device), reports_ids.to(
-        #             self.device), reports_masks.to(self.device)
-        #         output = self.model(images, mode='sample')
-        #         reports = self.model.tokenizer.decode_batch(output)  # Directly pass the list of strings
-        #         ground_truths = self.model.tokenizer.decode_batch(reports_ids[:, 1:].cpu().numpy())
-        #         val_res.extend(reports)
-        #         val_gts.extend(ground_truths)
-        #     val_met = self.metric_ftns({i: [gt] for i, gt in enumerate(val_gts)},
-        #                                {i: [re] for i, re in enumerate(val_res)})
-        #     log.update(**{'val_' + k: v for k, v in val_met.items()})
 
         self.model.eval()
         with torch.no_grad():
             self.ep += 1
-            test_gts, test_res = [], []
-            for batch_idx, (images_id, images, reports_ids, reports_masks) in enumerate(tqdm(self.test_dataloader)):
+            val_gts, val_res = [], []
+            for batch_idx, (images_id, images, reports_ids, reports_masks) in enumerate(tqdm(self.val_dataloader)):
                 images, reports_ids, reports_masks = images.to(self.device), reports_ids.to(
                     self.device), reports_masks.to(self.device)
                 # output = self.model(images, mode='sample')
@@ -239,14 +219,8 @@ class Trainer(BaseTrainer):
                 output = self.model(images, mode='sample')
                 reports = self.model.tokenizer.decode_batch(output)
 
-                # # 后处理：清洗重复句号和多余空格
                 # cleaned_reports = []
                 # for report in reports:
-                #     report = re.sub(r'(\.\s*){2,}', '. ', report)  # 多个 ". " → 一个 ". "
-                #     report = re.sub(r'\.{2,}', '.', report)  # 连续 "..." → "."
-                #     report = re.sub(r'^[\.\s]+', '', report)  # 开头的 "." 或空格去掉
-                #     report = re.sub(r'\s{2,}', ' ', report)  # 多个空格 → 一个空格
-                #     report = report.strip()  # 去掉首尾空格
                 #     cleaned_reports.append(report)
                 #
                 # reports = cleaned_reports
@@ -254,16 +228,11 @@ class Trainer(BaseTrainer):
 
 
                 ground_truths = self.model.tokenizer.decode_batch(reports_ids[:, 1:].cpu().numpy())
-                # print('reports', reports)
-                # print('ground_truths', ground_truths)
-                # print('ground_truths',ground_truths)
-                test_res.extend(reports)
-                test_gts.extend(ground_truths)
-            print('reports', reports)
-            print('ground_truths', ground_truths)
-            test_met = self.metric_ftns({i: [gt] for i, gt in enumerate(test_gts)},
-                                        {i: [re] for i, re in enumerate(test_res)})
-            log.update(**{'test_' + k: v for k, v in test_met.items()})
+                val_res.extend(reports)
+                val_gts.extend(ground_truths)
+            val_met = self.metric_ftns({i: [gt] for i, gt in enumerate(val_gts)},
+                                      {i: [re] for i, re in enumerate(val_res)})
+            log.update(**{'val_' + k: v for k, v in val_met.items()})
 
 
 

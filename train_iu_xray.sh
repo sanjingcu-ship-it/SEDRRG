@@ -6,7 +6,7 @@ python main_train_repro_final.py \
 --threshold 3 \
 --num_workers 2 \
 --batch_size 16 \
---epochs 40 \
+--epochs 100 \
 --save_dir results/iu_xray_sedrrg_seed9233 \
 --record_dir records/iu_xray_sedrrg_seed9233 \
 --step_size 50 \

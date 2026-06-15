@@ -40,7 +40,7 @@ class LanguageModelCriterion(nn.Module):
         targets = targets.reshape(-1)                  # [B*T]
         masks = masks.reshape(-1).bool()               # [B*T]
 
-        logits = logits[masks]                         # 只保留有效 token
+        logits = logits[masks]
         targets = targets[masks]
 
         loss = F.cross_entropy(logits, targets, reduction='mean')

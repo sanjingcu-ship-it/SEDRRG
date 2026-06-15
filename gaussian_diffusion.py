@@ -67,7 +67,7 @@ class GaussianDiffusion(nn.Module):
         if beta_schedule == 'linear':
             betas = linear_beta_schedule(timesteps)
         elif beta_schedule == 'cosine':
-            betas = cosine_beta_schedule(timesteps)   #两种不同的噪声调度策略
+            betas = cosine_beta_schedule(timesteps)
         else:
             raise ValueError(f'unknown beta schedule {beta_schedule}')
         # self.model = LSTM_with_timeemb(max_sent, max_word, hidden_dim, words_emb_dim, hidden_dim)
@@ -144,11 +144,9 @@ class GaussianDiffusion(nn.Module):
         elif self.objective == 'pred_x0':
             target = x_start
 
-        # 获取单词分布
         words_out = self.anti_emb(x_start)[0]  # (batch_size, max_sent, max_word, vocab_size)
         # print("b",words_out.shape)
 
-        # 计算 CE 损失
         ce_loss = self.criterion(words_out.view(-1, self.vocab_size), captions.view(-1))
 
         if train == 'dm':
@@ -156,10 +154,10 @@ class GaussianDiffusion(nn.Module):
             loss_noisy = reduce(loss_noisy, 'b ... -> b (...)', 'mean')
             loss_noisy = loss_noisy * extract(self.p2_loss_weight, t, loss_noisy.shape)
             loss_noisy = loss_noisy.mean()
-            return loss_noisy, ce_loss  # 返回扩散模型损失和 CE 损失
+            return loss_noisy, ce_loss
         elif train == 'emb':
             loss_emb = self.loss_fn(model_out, target)
-            return loss_emb, ce_loss  # 返回词嵌入损失和 CE 损失
+            return loss_emb, ce_loss
 
     def forward(self, captions, img):
 
@@ -179,17 +177,17 @@ class GaussianDiffusion(nn.Module):
         loss_dm, ce_loss1 = self.p_losses(t_dm, captions, topic, train='dm') if mode == 'dm' else (0., 0.)
 
         if mode == 'emb':
-            loss = loss_emb + ce_loss2  # 总损失 = 词嵌入损失 + CE 损失
+            loss = loss_emb + ce_loss2
             loss_dm_i = loss_dm
             loss_emb_i = loss_emb.item()
             loss_ce = ce_loss1 + ce_loss2.item()
         elif mode == 'dm':
-            loss = loss_dm + ce_loss1  # 总损失 = 扩散模型损失 + CE 损失
+            loss = loss_dm + ce_loss1
             loss_dm_i = loss_dm.item()
             loss_emb_i = loss_emb
             loss_ce = ce_loss1.item() + ce_loss2
 
-        return loss, loss_dm_i, loss_emb_i, loss_ce  # 返回总损失和各子损失
+        return loss, loss_dm_i, loss_emb_i, loss_ce
 
     def predict_start_from_noise(self, x_t, t, noise):
         return (
@@ -270,7 +268,6 @@ class Embeddings_LoRA(nn.Module):
         self.emb = nn.Embedding(vocab_size, words_emb_dim)
         self.norm = nn.LayerNorm(words_emb_dim)
 
-        # 将原始线性层替换为LoRA版本
         self.word_emb = nn.Sequential(
             LoRALayer(nn.Linear(words_emb_dim, words_emb_dim)),
             nn.GELU(),
@@ -317,10 +314,8 @@ class ImprovedAntiEmbeddings(nn.Module):
         super(ImprovedAntiEmbeddings, self).__init__()
         self.temperature = temperature
 
-        # 自注意力机制
         self.attention = nn.MultiheadAttention(embed_dim=words_emb_dim, num_heads=num_heads)
 
-        # 更深的 MLP
         self.anti_emb = nn.Sequential(
             nn.Linear(words_emb_dim, words_emb_dim * 2),
             nn.GELU(),
@@ -330,27 +325,20 @@ class ImprovedAntiEmbeddings(nn.Module):
         )
 
     def forward(self, x):
-        # 输入形状: (batch_size, max_sent, max_word, emb_dim)
         batch_size, max_sent, max_word, emb_dim = x.shape
 
-        # 将 4D 张量转换为 3D 张量
         x = x.view(batch_size * max_sent, max_word, emb_dim)  # (batch_size * max_sent, max_word, emb_dim)
         x = x.permute(1, 0, 2)  # (max_word, batch_size * max_sent, emb_dim)
 
-        # 自注意力机制
         x, _ = self.attention(x, x, x)  # (max_word, batch_size * max_sent, emb_dim)
         x = x.permute(1, 0, 2)  # (batch_size * max_sent, max_word, emb_dim)
 
-        # 恢复 4D 张量形状
         x = x.view(batch_size, max_sent, max_word, emb_dim)  # (batch_size, max_sent, max_word, emb_dim)
 
-        # MLP 映射
         x = self.anti_emb(x)  # (batch_size, max_sent, max_word, vocab_size)
 
-        # 温度缩放
         x = x / self.temperature
 
-        # 预测单词
         pred = torch.max(x, dim=-1)[1]  # (batch_size, max_sent, max_word)
 
         return x, pred

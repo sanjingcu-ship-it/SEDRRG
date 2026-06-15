@@ -106,13 +106,12 @@ class CrossAttention(nn.Module):
         hidden_dim = dim_head * heads
         ctx_dim = default(ctx_dim, dim)
 
-        # 修正：确保输入输出维度一致
         self.to_q = nn.Linear(dim, hidden_dim, bias=False)
         self.to_k = nn.Linear(ctx_dim, hidden_dim, bias=False)
         self.to_v = nn.Linear(ctx_dim, hidden_dim, bias=False)
 
         self.to_out = nn.Sequential(
-            nn.Linear(hidden_dim, dim),  # 输出维度与输入dim一致
+            nn.Linear(hidden_dim, dim),
             nn.Dropout(dropout)
         )
 
@@ -123,7 +122,6 @@ class CrossAttention(nn.Module):
         """
         context = default(context, x)
 
-        # 确保输入维度正确
         assert x.shape[-1] == self.to_q.in_features, \
             f"Input dim {x.shape[-1]} != query dim {self.to_q.in_features}"
 
@@ -131,7 +129,6 @@ class CrossAttention(nn.Module):
         k = self.to_k(context)  # [b,context_len,hidden_dim]
         v = self.to_v(context)
 
-        # 多头注意力计算
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), (q, k, v))
         sim = einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
         attn = sim.softmax(dim=-1)
@@ -194,9 +191,9 @@ class MixerBlock(nn.Module):
 
     def forward(self, x):
         out = self.ln_token(x).transpose(1, 2)
-        x = x + self.token_mix(out).transpose(1, 2)  # 先进行一次token-mixing MLP
+        x = x + self.token_mix(out).transpose(1, 2)
         out = self.ln_channel(x)
-        x = x + self.channel_mix(out)  # 再进行一次channel-mixing MLP
+        x = x + self.channel_mix(out)
         # x = self.dropout(x)
         return x
 
@@ -211,9 +208,8 @@ class FiLM(nn.Module):
 
     def forward(self, x, time_emb):
         gamma_beta = self.mlp(time_emb)  # (batch_size, 2 * hidden_dim)
-        gamma, beta = gamma_beta.chunk(2, dim=-1)  # 各为 (batch_size, hidden_dim)
+        gamma, beta = gamma_beta.chunk(2, dim=-1)
 
-        # 扩展 gamma 和 beta 到序列长度
         gamma = gamma.unsqueeze(1).expand(-1, x.shape[1], -1)  # (batch_size, seq_len, hidden_dim)
         beta = beta.unsqueeze(1).expand(-1, x.shape[1], -1)  # (batch_size, seq_len, hidden_dim)
 
@@ -231,11 +227,9 @@ class LoRALayer(nn.Module):
         self.base_layer = base_layer
         self.rank = rank
 
-        # 冻结原始权重
         for param in base_layer.parameters():
             param.requires_grad = False
 
-        # 添加低秩适配
         in_features = base_layer.in_features
         out_features = base_layer.out_features
         self.lora_A = nn.Parameter(torch.randn(in_features, rank))
@@ -255,15 +249,13 @@ class EnhancedLSTMWithTimeEmb(nn.Module):
             nn.SiLU(),
             nn.Linear(time_emb_dim, time_emb_dim * 2)
         )
-        self.proj_dim = nn.Linear(time_emb_dim, hidden_dim)  # 新增
+        self.proj_dim = nn.Linear(time_emb_dim, hidden_dim)
         super(EnhancedLSTMWithTimeEmb, self).__init__()
-        # 新增视觉适配层
         self.visual_proj = nn.Sequential(
-            nn.Linear(256, hidden_dim),  # 匹配topic的256维
+            nn.Linear(256, hidden_dim),
             nn.LayerNorm(hidden_dim)
         )
 
-        # 跨模态注意力层
         self.cross_attn = nn.MultiheadAttention(
             embed_dim=hidden_dim,
             num_heads=8,
@@ -299,7 +291,7 @@ class EnhancedLSTMWithTimeEmb(nn.Module):
             nn.SiLU(),
             nn.Linear(self.time_emb_dim, self.time_emb_dim * 2)
         )
-        self.proj_dim = nn.Linear(time_emb_dim, hidden_dim)  # 新增
+        self.proj_dim = nn.Linear(time_emb_dim, hidden_dim)
         self.res_catt = Residual(PreNorm(hidden_dim, CrossAttention(max_sent * max_word, words_emb_dim)))
         self.lstm1 = nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
         self.lstm5 = nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
@@ -315,7 +307,6 @@ class EnhancedLSTMWithTimeEmb(nn.Module):
         self.fc2 = nn.Linear(hidden_dim, words_emb_dim)
 
         self.time_proj = nn.Linear(time_emb_dim, hidden_dim)  # or whatever dimensions you need
-        # 将关键线性层替换为LoRA版本
         # self.proj = LoRALayer(nn.Linear(hidden_dim, time_emb_dim))
 
     def time_embedding(self, x, time_emb):  # (b sw d) (b d)
@@ -325,11 +316,10 @@ class EnhancedLSTMWithTimeEmb(nn.Module):
         # h = self.layernorm(x)
         # h = h * (scale + 1) + shift
         # return x + h  # (b sw d)
-        # 投影到hidden_dim并扩展维度
         scale = self.proj_dim(scale).unsqueeze(1)  # [batch, 1, hidden_dim]
         shift = self.proj_dim(shift).unsqueeze(1)
 
-        return x * (scale + 1) + shift  # 广播到[batch, seq_len, hidden_dim]
+        return x * (scale + 1) + shift
 
     def lstm_with_sum(self, x, lstm):  # (b sw d)
         # s = x.shape[1]
@@ -340,34 +330,28 @@ class EnhancedLSTMWithTimeEmb(nn.Module):
 
     def forward(self, x, t, topic):  # (b s w d2) (b) (b n1 d1)
         # r = x.clone()
-        # 投影视觉特征
         visual_feat = self.visual_proj(topic)  # [16,64,256] -> [16,64,hidden_dim]
 
-        # 强化时序特征
         time_emb = self.time_mlp(t)
         x = self.time_embedding(x, time_emb)
 
-        # 跨模态注意力
         attn_out, _ = self.cross_attn(
-            query=x,  # 文本特征
+            query=x,
             key=visual_feat,
             value=visual_feat
         )
 
-        # 残差连接
-        x = x + 0.3 * attn_out  # 可调节的融合系数
+        x = x + 0.3 * attn_out
 
         time_emb = self.time_mlp(t)  # f
         b, s, w, d = x.shape
         x = rearrange(x, 'b s w d -> b (s w) d')
         x = self.fc1(x)  # word_dim -> hidden_dim
 
-        # 时间嵌入融合
         x = x + self.time_proj(time_emb).unsqueeze(1)
 
         # x = self.proj(x)
 
-        # Transformer处理
         x = self.transformer(x)
 
         l1 = x.clone()
@@ -389,7 +373,6 @@ class AdaptiveLayerNorm(nn.Module):
     def __init__(self, hidden_dim):
         super().__init__()
         self.norm = nn.LayerNorm(hidden_dim)
-        # 增加可学习放大系数
         self.scale = nn.Parameter(torch.ones(1))
         self.bias = nn.Parameter(torch.zeros(1))
 
@@ -397,7 +380,7 @@ class AdaptiveLayerNorm(nn.Module):
         x = self.norm(x)
         topic_pooled = topic.mean(dim=1)  # [b,d]
         gamma = self.scale * topic_pooled.unsqueeze(1).unsqueeze(1) + self.bias
-        beta = gamma  # 或独立定义beta
+        beta = gamma
         return x * (gamma + 1) + beta
 class LSTM_with_timeemb(nn.Module):
     def __init__(self, max_sent, max_word, time_emb_dim, words_emb_dim, hidden_dim):
@@ -448,7 +431,6 @@ class LSTM_with_timeemb(nn.Module):
         self.fc2 = nn.Linear(hidden_dim, words_emb_dim)
 
         self.time_proj = nn.Linear(time_emb_dim, hidden_dim)  # or whatever dimensions you need
-        # 将关键线性层替换为LoRA版本
         # self.proj = LoRALayer(nn.Linear(hidden_dim, time_emb_dim))
 
     def time_embedding(self, x, time_emb):  # (b sw d) (b d)
@@ -475,26 +457,22 @@ class LSTM_with_timeemb(nn.Module):
         # x = rearrange(x, 'b s w d -> b (s w) d')
         x = self.fc1(x)  # word_dim -> hidden_dim
         # print(x.shape)
-        x = self.adapt_norm1(x, topic)  # 第二次注入
+        x = self.adapt_norm1(x, topic)
         # print(x.shape)
         x = rearrange(x, 'b s w d -> b (s w) d')
 
 
-        # 时间嵌入融合
         x = x + self.time_proj(time_emb).unsqueeze(1)
 
         # x = self.proj(x)
 
-        # Transformer处理
         x = self.transformer(x)
-        # x = self.adapt_norm1(x, topic)  # 第二次注入
         # print(x.shape)
 
         l1 = x.clone()
 
         x = self.lstm_with_sum(self.film(x, time_emb), self.lstm1)  # (b sw d)
         l2 = x.clone()
-        # x = self.adapt_norm2(x, topic)  # 第二次注入
         x = self.mlp1(self.res_catt(self.film(x, time_emb), topic))  # (b sw d)
         l3 = x.clone()
         # x = self.res_catt(self.time_embedding(x, time_emb), topic)
@@ -584,7 +562,7 @@ class ImprovedDenoiser(nn.Module):
                  time_emb_dim=256,
                  num_heads=8,
                  dropout=0.1,
-                 use_img_feats=True):  # 新增参数控制是否使用图像特征
+                 use_img_feats=True):
         super().__init__()
 
         self.relational_memory = RelationalMemory(mem_slots=3, input_size=hidden_dim)
@@ -592,15 +570,13 @@ class ImprovedDenoiser(nn.Module):
         self.max_sent = max_sent
         self.max_word = max_word
         self.seq_len = max_sent * max_word  # 4*32=128
-        self.use_img_feats = use_img_feats  # 是否使用图像特征
+        self.use_img_feats = use_img_feats
 
-        # 1. 初始化投影层
         self.init_proj = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.LayerNorm(hidden_dim)
         )
 
-        # 2. 时间嵌入处理
         self.time_mlp = nn.Sequential(
             SinusoidalPosEmb(time_emb_dim),
             nn.Linear(time_emb_dim, time_emb_dim * 2),
@@ -608,16 +584,13 @@ class ImprovedDenoiser(nn.Module):
             nn.Linear(time_emb_dim * 2, hidden_dim)
         )
 
-        # 3. 条件处理
         self.topic_proj = nn.Linear(hidden_dim, hidden_dim)
 
-        # 修正：只有在use_img_feats为True时才初始化img_proj
         if self.use_img_feats:
             self.img_proj = nn.Linear(512, hidden_dim)
         else:
             self.img_proj = None
 
-        # 其余部分保持不变...
         self.condition_fusion = nn.ModuleList([
             ConditionBlock(hidden_dim, num_heads, dropout)
             for _ in range(3)
@@ -645,39 +618,32 @@ class ImprovedDenoiser(nn.Module):
         """
         memory = torch.zeros(16, 3, 256).to(x.device)  # [B, 3, 256]
 
-        # 1. 展平输入
         b, s, w, d = x.shape
         h = rearrange(x, 'b s w d -> b (s w) d')  # [16,128,256]
 
-        # 2. 初始投影+时间嵌入
         h = self.init_proj(h)
         time_emb = self.time_mlp(t)  # [16,256]
         h = h + time_emb.unsqueeze(1)  # [16,128,256]
 
-        # 3. 条件融合
         conditions = self._prepare_conditions(topic, img_feats)
         for fuse_layer in self.condition_fusion:
             h = fuse_layer(h, conditions, time_emb)
 
-        # 4. 渐进式去噪（关键修正）
         skip_weight = self.skip_weight_proj(time_emb)  # [16,256]->[16,256]
         h_final = 0
         for layer in self.noise_layers:
-            # 每一步都更新记忆，并拼接到输入中
             memory = self.relational_memory(memory, h.mean(dim=1))  # h: [B, 128, 256]
             memory_cond = memory.mean(dim=1).unsqueeze(1).expand(-1, h.shape[1], -1)  # [B, 128, 256]
-            h = h + memory_cond  # 或 concat+MLP 也行
+            h = h + memory_cond
 
             h = layer(h, time_emb)
-            h_final = h_final + h * skip_weight.unsqueeze(1)  # [16,1,256]广播
+            h_final = h_final + h * skip_weight.unsqueeze(1)
 
-        # 5. 输出处理
         out = self.final_norm(h_final, time_emb)
         out = self.output_proj(out)
         # print(out.shape)
         return rearrange(out, 'b (s w) d -> b s w d', s=4)
     def _prepare_conditions(self, topic, img_feats):
-        """统一条件特征维度"""
         conditions = []
         if topic is not None:
             conditions.append(self.topic_proj(topic.mean(1)))  # [b,64,256]->[b,256]
@@ -687,13 +653,12 @@ class ImprovedDenoiser(nn.Module):
 
 
 class ConditionBlock(nn.Module):
-    """条件信息融合模块"""
 
     def __init__(self, hidden_dim, num_heads, dropout):
         super().__init__()
         self.cross_attn = CrossAttention(
             dim=hidden_dim,
-            ctx_dim=hidden_dim,  # 条件与输入同维度
+            ctx_dim=hidden_dim,
             heads=num_heads
         )
         self.gate = nn.Linear(hidden_dim * 2, 1)
@@ -702,17 +667,15 @@ class ConditionBlock(nn.Module):
     def forward(self, x, cond, time_emb):
         if cond is None:
             return x
-        # 确保条件维度匹配
         if cond.dim() == 2:  # [b,d]
             cond = cond.unsqueeze(1)  # [b,1,d]
         elif cond.dim() == 3 and cond.size(1) > 1:  # [b,n,d]
-            cond = cond.mean(dim=1, keepdim=True)  # 合并多条件
+            cond = cond.mean(dim=1, keepdim=True)
 
         return self.cross_attn(x, cond)
 
 
 
-        # # 门控融合
         # attn_out = self.cross_attn(x, cond)
         # gate = torch.sigmoid(self.gate(torch.cat([x, attn_out], dim=-1)))
         # return self.dropout(gate * attn_out + (1 - gate) * x)
@@ -721,7 +684,6 @@ class ConditionBlock(nn.Module):
 class DenoiseBlock(nn.Module):
     def __init__(self, hidden_dim, time_emb_dim):
         super().__init__()
-        # 确保所有线性层维度一致
         self.time_mlp = nn.Sequential(
             nn.SiLU(),
             nn.Linear(time_emb_dim, hidden_dim),
@@ -735,17 +697,14 @@ class DenoiseBlock(nn.Module):
         )
 
     def forward(self, x, time_emb):
-        # 时间条件调制
         time_feat = self.time_mlp(time_emb).unsqueeze(1)  # [b,1,d]
-        x = x * (1 + time_feat)  # 广播调制
+        x = x * (1 + time_feat)
 
-        # 注意力处理
         x, _ = self.attn(x, x, x)
         return x
 
 
 class AdaptiveLayerNorm1(nn.Module):
-    """时间自适应的层归一化"""
 
     def __init__(self, hidden_dim):
         super().__init__()
@@ -787,7 +746,7 @@ class CrossAttentionBlock(nn.Module):
     def forward(self, x, image_features):
         x_norm = self.norm(x)
         attn_out, _ = self.cross_attn(query=x_norm, key=image_features, value=image_features)
-        return attn_out + x  # 残差连接
+        return attn_out + x
 
 class DenoiserWithCrossAttention(nn.Module):
     def __init__(self, emb_dim, image_dim):

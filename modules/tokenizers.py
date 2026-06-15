@@ -20,7 +20,6 @@
 #         self.unk_token_id = self.token2idx.get(self.unk_token, 0)
 #
 #         self.pad_token_id = 0
-#         self.mask_token_id = len(self.token2idx) + 1  # 加一个
 #         self.cls_token_id = len(self.token2idx) + 2
 #         self.eos_token = '<eos>'
 #         self.token2idx['<eos>'] = len(self.token2idx) + 3
@@ -29,10 +28,6 @@
 #         self.token2idx['<pad>'] = 0
 #         self.idx2token[0] = '<pad>'
 #
-#         # 在创建词汇表后添加
-#         print(f"词汇表大小: {len(self.token2idx)}")
-#         print(f"最大ID: {max(self.idx2token.keys())}")
-#         print(f"示例token: {list(self.idx2token.items())[:20]}")
 #
 #     def create_vocabulary(self):
 #         total_tokens = []
@@ -141,7 +136,7 @@ class Tokenizer(object):
         self.unk_token_id = self.token2idx.get(self.unk_token, 0)
 
         self.pad_token_id = 0
-        self.mask_token_id = len(self.token2idx) + 1  # 加一个
+        self.mask_token_id = len(self.token2idx) + 1
         self.cls_token_id = len(self.token2idx) + 2
         self.eos_token = '<eos>'
         self.token2idx['<eos>'] = len(self.token2idx) + 3
@@ -151,10 +146,9 @@ class Tokenizer(object):
         self.idx2token[0] = '<pad>'
         self.high_ngram_ids = [idx for token, idx in self.token2idx.items() if len(token.split()) >= 2]
 
-        # 在创建词汇表后添加
-        print(f"词汇表大小: {len(self.token2idx)}")
-        print(f"最大ID: {max(self.idx2token.keys())}")
-        print(f"示例token: {list(self.idx2token.items())[:80]}")
+        print(f"Vocabulary size: {len(self.token2idx)}")
+        print(f"Maximum ID: {max(self.idx2token.keys())}")
+        print(f"Example tokens: {list(self.idx2token.items())[:80]}")
 
     def create_vocabulary(self):
         from nltk import word_tokenize, ngrams
@@ -242,7 +236,6 @@ class Tokenizer(object):
 
         while i < len(words):
             matched = False
-            # 尝试从4-gram到1-gram匹配
             for n in [4, 3, 2, 1]:
                 if i + n <= len(words):
                     phrase = ' '.join(words[i:i + n])
@@ -252,7 +245,6 @@ class Tokenizer(object):
                         matched = True
                         break
             if not matched:
-                # 没找到任何短语，使用单个词的UNK
                 tokens.append('<unk>')
                 i += 1
 
