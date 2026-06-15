@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this code, please cite the associated SEDRRG manuscript."
 title: "Structured Evidence-Guided Discrete Diffusion for Image-Conditioned Radiology Report Generation"
 authors:
-  - family-names: "Sum"
+  - family-names: "Sun"
     given-names: "Shuifa"
 version: "1.0-review"
 date-released: 2026-06-15

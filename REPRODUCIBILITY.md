@@ -72,19 +72,32 @@ IU X-Ray uses tokenizer-derived medical phrase boosting during inference in the 
 
     bash test_iu_xray_no_boost.sh
 
+## METEOR dependency
+
+METEOR evaluation requires Java because the COCO-caption METEOR wrapper calls the METEOR jar. The provided conda environment includes OpenJDK for this purpose.
+
 ## Clinical efficacy evaluation
 
-Clinical efficacy is evaluated after report generation. Generated and reference reports should first be labeled by CheXbert or a compatible 14-observation label extractor. Then run:
+Clinical efficacy is evaluated after report generation. First apply the public CheXbert labeler, or a compatible 14-observation label extractor, to generated and reference reports. The CheXbert labeler and its checkpoint are not redistributed in this repository and should be obtained from the original CheXbert release.
+
+The expected CSV format is one identifier column followed by the standard 14 CheXbert observation columns in this order: No Finding, Enlarged Cardiomediastinum, Cardiomegaly, Lung Opacity, Lung Lesion, Edema, Consolidation, Pneumonia, Atelectasis, Pneumothorax, Pleural Effusion, Pleural Other, Fracture, Support Devices. Labels are binarized before metric computation, with positive=1 and negative, uncertain, or unmentioned labels treated as 0.
+
+An example label table is provided at `examples/ce_labeled_example.csv`.
+
+Run the default MIMIC-CXR CE evaluation with:
 
     python compute_ce.py
 
-By default, compute_ce.py expects:
+By default, `compute_ce.py` expects:
 
     results/mimic_cxr/res_labeled.csv
     results/mimic_cxr/gts_labeled.csv
 
-The script maps uncertain labels to non-positive labels and reports CheXbert-label-based micro precision, recall, and F1.
+Custom paths can be supplied with:
 
+    python compute_ce.py --res_csv path/to/res_labeled.csv --gts_csv path/to/gts_labeled.csv
+
+The script reports CheXbert-label-based micro-averaged precision, recall, and F1 using the extracted label vectors.
 ## Metric scripts
 
 Textual metrics are computed through modules/metrics.py and the included pycocoevalcap utilities. The reported benchmark metrics depend on using the same tokenization, report section selection, split file, and evaluation script.

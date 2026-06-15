@@ -55,3 +55,7 @@ temp/
 # Backups
 *.bak*
 *.backup*
+
+# Keep small documentation examples
+!examples/
+!examples/*.csv
