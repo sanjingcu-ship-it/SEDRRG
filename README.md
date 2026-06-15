@@ -39,6 +39,10 @@ Expected local layout:
 
 The annotation JSON files should follow the standard train, validation, and test split format used by the dataloader.
 
+## Reproducibility
+
+For environment setup, data layout, split inspection, training, testing, phrase-boost ablation, and clinical efficacy evaluation, see `REPRODUCIBILITY.md`.
+
 ## Training
 
 Train on IU X-Ray:
