@@ -16,5 +16,5 @@ python main_test.py \
 --sample_alpha 1.2 \
 --sample_temperature 0.6 \
 --sample_top_k 4 \
---sample_ngram_boost 0.0 \
+--sample_ngram_boost 1.0 \
 --load results/iu_xray_sedrrg_seed9233/model_best.pth

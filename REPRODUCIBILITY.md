@@ -68,7 +68,7 @@ The test scripts assume that training has produced the corresponding model_best.
 
 ## Medical word/phrase boost ablation
 
-IU X-Ray uses tokenizer-derived medical phrase boosting during inference in the default script. To disable this inference-only boost while keeping the same checkpoint, split, seed, decoding length, temperature, and top-k setting, run:
+IU X-Ray uses tokenizer-derived medical phrase boosting during inference in the default script. To use the neutral no-boost setting while keeping the same checkpoint, split, seed, decoding length, temperature, and top-k setting, run:
 
     bash test_iu_xray_no_boost.sh
 
