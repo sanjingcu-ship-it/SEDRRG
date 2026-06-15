@@ -327,25 +327,11 @@ class DiscreteDiffusion(nn.Module):
         )
         self.dropout = nn.Dropout(args.dropout)
 
-        # self.visual_conditioner = VisualConditioner(
-        #     visual_dim=2048,
-        #     d_model=args.d_model,
-        #     num_heads=args.num_heads
-        # )
-        # Replace the original visual conditioner.
-        self.visual_conditioner = VisualConditioner(
-            visual_dim=768,  # visual feature dimension; use 2048 for ResNet-101 features
-            d_model=args.d_model,
-            num_heads=args.num_heads,
-            dropout=args.dropout
-        )
-        self.visual_bridge = VisualLanguageBridge(
-            visual_dim=768,
-            d_model=args.d_model,
-            num_heads=args.num_heads,
-            num_query_tokens=getattr(args, "bridge_num_queries", 8),
-            dropout=args.dropout
-        )
+        # Paper-aligned visual projections for token-wise global-local gating.
+        # W_p^{cond}: patch/local visual projection.
+        # W_g^{cond}: global image projection.
+        self.local_visual_proj = nn.Linear(args.d_vf, args.d_model)
+        self.global_visual_proj = nn.Linear(args.d_vf, args.d_model)
         self.token_visual_attn = MultiHeadedAttention(
             args.num_heads,
             args.d_model,
@@ -488,11 +474,8 @@ class DiscreteDiffusion(nn.Module):
         t_cond_token = t_cond.unsqueeze(1).expand(-1, seq_len, -1)       # [B, L, D]
         z_t = x_emb + t_cond_token + pos                                 # [B, L, D]
 
-        # W_p^{cond} F_p and W_g^{cond} f_g are implemented by the existing
-        # VisualLanguageBridge projections so the local/global evidence streams
-        # share the same visual projection space used by the released model.
-        patch_tokens = self.visual_bridge.patch_proj(att_feats)           # [B, N, D]
-        global_token = self.visual_bridge.global_proj(fc_feats)           # [B, D]
+        patch_tokens = self.local_visual_proj(att_feats)                  # W_p^{cond} F_p: [B, N, D]
+        global_token = self.global_visual_proj(fc_feats)                  # W_g^{cond} f_g: [B, D]
 
         c_g = self.global_cond_proj(global_token).unsqueeze(1)            # [B, 1, D]
         c_g = c_g.expand(-1, seq_len, -1)                                 # [B, L, D]
