@@ -63,6 +63,17 @@ Test on MIMIC-CXR:
 
     bash test_mimic_cxr.sh
 
+
+## Medical word/phrase boost ablation
+
+The IU X-Ray configuration uses tokenizer-derived multi-token medical phrase boosting during sampling (`--sample_ngram_boost 1.5`). To reproduce the inference-only ablation requested during review, run the same checkpoint and decoding configuration with the boost disabled:
+
+    bash test_iu_xray_no_boost.sh
+
+In `models/r2gen.py`, a non-positive `--sample_ngram_boost` value disables phrase-logit reweighting, and `1.0` is neutral. This ablation changes only the inference-time lexical prior; it does not retrain the model or change the tokenizer, test split, checkpoint, denoising steps, temperature, top-k setting, or random seed.
+
+For MIMIC-CXR, the released tokenizer is word-level and does not retain multi-token phrase IDs, so the phrase-boost mechanism has no practical effect under the default MIMIC-CXR configuration.
+
 ## Denoising trace export
 
 To export token-space reverse diffusion traces, add these flags to main_test.py:

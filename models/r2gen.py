@@ -194,7 +194,20 @@ class R2GenModel(nn.Module):
                              mask_id,
                              device=device)
 
-            high_ngram_ids = torch.tensor(self.tokenizer.high_ngram_ids, device=device)
+            high_ngram_ids_list = list(getattr(self.tokenizer, 'high_ngram_ids', []))
+            high_ngram_ids = (
+                torch.tensor(high_ngram_ids_list, device=device, dtype=torch.long)
+                if len(high_ngram_ids_list) > 0 else None
+            )
+            # A non-positive factor is treated as disabled for ablation.
+            # A factor of 1.0 is neutral. Values > 1.0 increase the relative
+            # preference for tokenizer-derived multi-token medical phrases.
+            boost_enabled = (
+                high_ngram_ids is not None
+                and ngram_boost is not None
+                and float(ngram_boost) > 0.0
+                and abs(float(ngram_boost) - 1.0) > 1e-8
+            )
 
             sample_steps = getattr(self.args, 'sample_diffusion_steps', None)
             if sample_steps is None or sample_steps <= 0 or sample_steps >= self.num_timesteps:
@@ -270,7 +283,8 @@ class R2GenModel(nn.Module):
 
                 logits[:, :, self.tokenizer.unk_token_id] = -float('inf')
 
-                logits[:, :, high_ngram_ids] *= ngram_boost  # e.g. 1.5 ~ 2.0
+                if boost_enabled:
+                    logits[:, :, high_ngram_ids] *= float(ngram_boost)  # e.g. 1.5 ~ 2.0
 
                 probs = F.softmax(logits / temperature, dim=-1)
                 x_t = self._sample_with_topk(probs, top_k)
