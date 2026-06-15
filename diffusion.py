@@ -467,18 +467,8 @@ class DiscreteDiffusion(nn.Module):
         if memory is None:
             memory = torch.zeros(B, 3, self.args.d_model, device=device)
 
-        # cond = self.visual_conditioner(att_feats, fc_feats)  # [B, 2048]
 
-        # visual_cond = self.visual_conditioner(att_feats, fc_feats)  # [B, D]
-        if return_attn:
-            bridge_tokens, visual_cond, attn_map = self.visual_bridge(
-                att_feats, fc_feats, return_attn=True
-            )
-        else:
-            bridge_tokens, visual_cond = self.visual_bridge(
-                att_feats, fc_feats, return_attn=False
-            )
-            attn_map = None
+        attn_map = None
 
         t_emb = self.time_embed(t)  # [B, d_model]
         t_cond = self.time_mlp(t_emb)  # [B, D]
