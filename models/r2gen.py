@@ -147,13 +147,11 @@ class R2GenModel(nn.Module):
             x_t = x_t[0]
         logits, memory = self.diffusion.denoise_step(x_t, att_feats, fc_feats, t)
 
-        # Also expose the pooled visual condition used by the diffusion denoiser.
-        # This enables a lightweight image-memory contrastive MFSL term without
-        # changing the denoising architecture.
-        try:
-            _, visual_cond = self.diffusion.visual_bridge(att_feats, fc_feats, return_attn=False)
-        except Exception:
-            visual_cond = None
+        # Expose the same projected global visual condition used by the
+        # diffusion denoiser for the image-memory contrastive MFSL term.
+        visual_cond = self.diffusion.global_cond_proj(
+            self.diffusion.global_visual_proj(fc_feats)
+        )
 
         loss = F.cross_entropy(
             logits.reshape(-1, self.vocab_size),

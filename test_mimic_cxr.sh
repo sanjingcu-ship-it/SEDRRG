@@ -3,6 +3,7 @@ python main_test.py \
 --ann_path data/mimic_cxr/annotation.json \
 --dataset_name mimic_cxr \
 --max_seq_length 100 \
+--d_vf 768 \
 --threshold 10 \
 --num_workers 2 \
 --batch_size 16 \

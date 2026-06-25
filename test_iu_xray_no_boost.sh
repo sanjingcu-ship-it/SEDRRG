@@ -3,6 +3,7 @@ python main_test.py \
 --ann_path data/iu_xray/annotation.json \
 --dataset_name iu_xray \
 --max_seq_length 60 \
+--d_vf 768 \
 --threshold 3 \
 --num_workers 2 \
 --batch_size 16 \

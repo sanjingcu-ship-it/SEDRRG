@@ -16,6 +16,8 @@ Create the environment with:
 
     conda env create -f environment.yml
     conda activate sedrrg
+    conda install -y -c conda-forge openjdk=11
+    python -m nltk.downloader punkt punkt_tab
 
 If the installed CUDA or PyTorch version differs from the local GPU driver, install a compatible PyTorch build first and then install the remaining dependencies from environment.yml.
 
@@ -31,7 +33,7 @@ Datasets are not redistributed in this repository. Prepare local folders in the 
         images/
         annotation.json
 
-The annotation JSON should contain train, validation, and test splits in the format expected by the dataloader.
+The annotation JSON should contain `train`, `val`, and `test` splits in the format expected by the dataloader.
 
 ## Inspecting split counts and missing sections
 
@@ -74,7 +76,7 @@ IU X-Ray uses tokenizer-derived medical phrase boosting during inference in the 
 
 ## METEOR dependency
 
-METEOR evaluation requires Java because the COCO-caption METEOR wrapper calls the METEOR jar. The provided conda environment includes OpenJDK for this purpose.
+METEOR evaluation requires Java because the COCO-caption METEOR wrapper calls the METEOR jar. Install OpenJDK 11 with the environment-setup command above before running METEOR.
 
 ## Clinical efficacy evaluation
 

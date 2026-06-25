@@ -20,6 +20,8 @@ Create the environment with:
 
     conda env create -f environment.yml
     conda activate sedrrg
+    conda install -y -c conda-forge openjdk=11
+    python -m nltk.downloader punkt punkt_tab
 
 If your local CUDA or PyTorch version differs, install a compatible PyTorch build for your GPU first and then install the remaining dependencies.
 
@@ -37,7 +39,7 @@ Expected local layout:
         images/
         annotation.json
 
-The annotation JSON files should follow the standard train, validation, and test split format used by the dataloader.
+The annotation JSON files should contain `train`, `val`, and `test` splits in the format used by the dataloader.
 
 ## Reproducibility
 
@@ -87,7 +89,7 @@ To export token-space reverse diffusion traces, add these flags to main_test.py:
 
 The exported trace records report-token states and sampling statistics in token space. It should not be interpreted as image or pixel denoising. The active diffusion sampler does not use beam search.
 
-Note: METEOR evaluation requires Java. The provided conda environment includes OpenJDK for this purpose.
+Note: METEOR evaluation requires Java. Install OpenJDK 11 with the environment-setup command above before running METEOR.
 
 ## Clinical efficacy evaluation
 
